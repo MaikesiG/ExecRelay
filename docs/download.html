@@ -1,143 +1,314 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Download ExecRelay Terminal v0.1.0</title>
-  <meta name="description" content="Download ExecRelay Terminal for macOS. A local-first engineering terminal for capturing execution evidence, observing repository changes, and explicitly verifying engineering work.">
-  <link rel="icon" type="image/png" href="assets/icon.png">
-  <link rel="stylesheet" href="styles.css">
-</head>
-<body>
-  <header class="site-header">
-    <div class="nav-container">
-      <a href="index.html" class="brand">
-        <img src="assets/icon.png" alt="ExecRelay Terminal icon" class="brand-icon">
-        <span>ExecRelay</span>
-      </a>
-      <nav aria-label="Main navigation">
-        <ul class="nav-links">
-          <li><a href="index.html">Overview</a></li>
-          <li><a href="download.html" class="active" aria-current="page">Download</a></li>
-          <li><a href="https://github.com/MaikesiG/ExecRelay" target="_blank" rel="noopener noreferrer">GitHub</a></li>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Download ExecRelay Terminal v0.1.1</title>
+    <meta
+      name="description"
+      content="Download ExecRelay Terminal v0.1.1 for macOS Apple Silicon. A local-first engineering terminal for capturing execution evidence, observing repository changes, and explicitly verifying engineering work."
+    />
+    <link rel="icon" type="image/png" href="assets/icon.png" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+
+  <body>
+    <header class="site-header">
+      <div class="nav-container">
+        <a href="index.html" class="brand">
+          <img
+            src="assets/icon.png"
+            alt="ExecRelay Terminal icon"
+            class="brand-icon"
+          />
+          <span>ExecRelay</span>
+        </a>
+
+        <nav aria-label="Main navigation">
+          <ul class="nav-links">
+            <li>
+              <a href="index.html">Overview</a>
+            </li>
+            <li>
+              <a href="download.html" class="active" aria-current="page">
+                Download
+              </a>
+            </li>
+            <li>
+              <a
+                href="https://github.com/MaikesiG/ExecRelay"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                GitHub
+              </a>
+            </li>
+          </ul>
+        </nav>
+      </div>
+    </header>
+
+    <main class="content-container">
+      <!-- Hero -->
+      <section class="hero">
+        <div class="hero-badge">ExecRelay Terminal v0.1.1</div>
+
+        <h1 class="hero-title">ExecRelay Terminal</h1>
+
+        <p class="hero-tagline">
+          Run anything. Trace everything. Verify what actually happened.
+        </p>
+
+        <p class="hero-description">
+          A local-first engineering terminal for capturing execution evidence,
+          observing repository changes, and explicitly verifying engineering
+          work.
+        </p>
+
+        <div class="cta-group">
+          <a
+            href="https://github.com/MaikesiG/ExecRelay/releases/download/v0.1.1/ExecRelay_0.1.1_aarch64.dmg"
+            class="btn btn-primary"
+          >
+            Download for macOS
+          </a>
+
+          <a
+            href="https://github.com/MaikesiG/ExecRelay"
+            class="btn btn-secondary"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            View on GitHub
+          </a>
+        </div>
+      </section>
+
+      <!-- Release Status -->
+      <section
+        class="release-status-card"
+        aria-labelledby="release-status-heading"
+      >
+        <span class="status-badge"> Developer Preview </span>
+
+        <h2 id="release-status-heading" class="release-title">
+          ExecRelay Terminal v0.1.1 is Available
+        </h2>
+
+        <p class="release-note">
+          ExecRelay Terminal v0.1.1 is available as a free developer preview for
+          macOS on Apple Silicon (arm64). No ExecRelay account is required.
+        </p>
+
+        <p class="release-note">
+          This application is ad-hoc signed but is not signed with an Apple
+          Developer ID or notarized by Apple. macOS may require manual approval
+          on first launch.
+        </p>
+
+        <div class="cta-group">
+          <a
+            href="https://github.com/MaikesiG/ExecRelay/releases/download/v0.1.1/ExecRelay_0.1.1_aarch64.dmg"
+            class="btn btn-primary"
+          >
+            Download v0.1.1
+          </a>
+
+          <a
+            href="https://github.com/MaikesiG/ExecRelay/releases/tag/v0.1.1"
+            class="btn btn-secondary"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            View Release Notes
+          </a>
+        </div>
+      </section>
+
+      <!-- Core Features -->
+      <section class="section">
+        <h2 class="section-title">Core Features</h2>
+
+        <div class="feature-grid">
+          <article class="feature-card">
+            <h3 class="feature-name">Terminal</h3>
+            <p class="feature-desc">Real PTY-backed engineering terminal.</p>
+          </article>
+
+          <article class="feature-card">
+            <h3 class="feature-name">Capture</h3>
+            <p class="feature-desc">
+              Structured evidence for executed commands and observed outcomes.
+            </p>
+          </article>
+
+          <article class="feature-card">
+            <h3 class="feature-name">Changes</h3>
+            <p class="feature-desc">
+              Repository changes observed during execution windows.
+            </p>
+          </article>
+
+          <article class="feature-card">
+            <h3 class="feature-name">Verify</h3>
+            <p class="feature-desc">
+              Explicit verification checks with retained run history.
+            </p>
+          </article>
+        </div>
+      </section>
+
+      <!-- Installation -->
+      <section class="section">
+        <h2 class="section-title">Installation on macOS</h2>
+
+        <ol class="steps-list">
+          <li>
+            <strong>Download:</strong>
+            Download ExecRelay Terminal v0.1.1 for Apple Silicon.
+          </li>
+
+          <li>
+            <strong>Open:</strong>
+            Open the downloaded DMG file.
+          </li>
+
+          <li>
+            <strong>Install:</strong>
+            Drag ExecRelay into your Applications folder.
+          </li>
+
+          <li>
+            <strong>Launch:</strong>
+            Open ExecRelay from Applications.
+          </li>
+
+          <li>
+            <strong>Security Approval:</strong>
+            If macOS blocks ExecRelay, open System Settings, select Privacy
+            &amp; Security, find the ExecRelay security message, and click Open
+            Anyway.
+          </li>
+
+          <li>
+            <strong>Confirm:</strong>
+            Confirm that you want to open ExecRelay.
+          </li>
+        </ol>
+      </section>
+
+      <!-- macOS Security Notice -->
+      <section class="section">
+        <h2 class="section-title">macOS Security Notice</h2>
+
+        <div class="text-callout">
+          ExecRelay Terminal v0.1.1 is an ad-hoc signed, non-notarized developer
+          preview. On first launch, macOS may display a warning that Apple could
+          not verify ExecRelay is free of malware. If you trust the downloaded
+          application, you can approve it through System Settings &gt; Privacy
+          &amp; Security &gt; Open Anyway.
+        </div>
+      </section>
+
+      <!-- System Requirements -->
+      <section class="section">
+        <h2 class="section-title">System Requirements</h2>
+
+        <div class="info-box">
+          <ul class="spec-list">
+            <li>
+              <span class="spec-label"> Operating System </span>
+              <span class="spec-value"> macOS 11.0 (Big Sur) or later </span>
+            </li>
+
+            <li>
+              <span class="spec-label"> Architecture </span>
+              <span class="spec-value">
+                Apple Silicon (arm64 tested; Intel x86_64 pending)
+              </span>
+            </li>
+
+            <li>
+              <span class="spec-label"> Runtime Engine </span>
+              <span class="spec-value"> Native Rust / Tauri v2 </span>
+            </li>
+
+            <li>
+              <span class="spec-label"> Account Requirement </span>
+              <span class="spec-value"> None (local-first) </span>
+            </li>
+
+            <li>
+              <span class="spec-label"> Release Version </span>
+              <span class="spec-value"> v0.1.1 Developer Preview </span>
+            </li>
+          </ul>
+        </div>
+      </section>
+
+      <!-- Security & Trust -->
+      <section class="section">
+        <h2 class="section-title">Security &amp; Trust Model</h2>
+
+        <div class="text-callout">
+          ExecRelay uses native process outcomes and explicit verification
+          results rather than inferring engineering success from terminal text.
+        </div>
+      </section>
+
+      <!-- Privacy -->
+      <section class="section">
+        <h2 class="section-title">Privacy &amp; Local-First</h2>
+
+        <div class="text-callout">
+          ExecRelay v0.1.1 requires no ExecRelay account. Core execution happens
+          locally on your computer, and local workspace data remains on the
+          local application unless you choose to use external tools from the
+          terminal. Normal terminal operation survives even if telemetry fails.
+        </div>
+      </section>
+    </main>
+
+    <!-- Footer -->
+    <footer class="site-footer">
+      <div class="footer-container">
+        <div class="footer-brand">
+          <strong>ExecRelay</strong>
+          &mdash; Local-first execution harness.
+        </div>
+
+        <ul class="footer-links">
+          <li>
+            <a
+              href="https://github.com/MaikesiG/ExecRelay"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              GitHub
+            </a>
+          </li>
+
+          <li>
+            <a
+              href="https://github.com/MaikesiG/ExecRelay/releases"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Releases
+            </a>
+          </li>
+
+          <li>
+            <a
+              href="https://github.com/MaikesiG/ExecRelay/issues"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Issues
+            </a>
+          </li>
         </ul>
-      </nav>
-    </div>
-  </header>
-
-  <main class="content-container">
-    <section class="hero">
-      <div class="hero-badge">ExecRelay Terminal v0.1.0</div>
-      <h1 class="hero-title">ExecRelay Terminal</h1>
-      <p class="hero-tagline">Run anything. Trace everything. Verify what actually happened.</p>
-      <p class="hero-description">
-        A local-first engineering terminal for capturing execution evidence, observing repository changes, and explicitly verifying engineering work.
-      </p>
-      <div class="cta-group">
-        <button type="button" class="btn btn-disabled" disabled aria-disabled="true">Download for macOS</button>
-        <a href="https://github.com/MaikesiG/ExecRelay" class="btn btn-secondary" target="_blank" rel="noopener noreferrer">View on GitHub</a>
       </div>
-    </section>
-
-    <!-- Download State Card -->
-    <section class="release-status-card" aria-labelledby="release-status-heading">
-      <span class="status-badge">Release Status</span>
-      <h2 id="release-status-heading" class="release-title">macOS Release Preparation</h2>
-      <p class="release-note">
-        ExecRelay Terminal v0.1.0 is being prepared for release. Pre-release testing targets macOS (Apple Silicon arm64). Packaged DMG bundles will be made available through GitHub Releases.
-      </p>
-      <div class="cta-group">
-        <a href="https://github.com/MaikesiG/ExecRelay/releases" class="btn btn-primary" target="_blank" rel="noopener noreferrer">View GitHub Releases</a>
-      </div>
-    </section>
-
-    <!-- Features -->
-    <section class="section">
-      <h2 class="section-title">Core Features</h2>
-      <div class="feature-grid">
-        <article class="feature-card">
-          <h3 class="feature-name">Terminal</h3>
-          <p class="feature-desc">Real PTY-backed engineering terminal.</p>
-        </article>
-        <article class="feature-card">
-          <h3 class="feature-name">Capture</h3>
-          <p class="feature-desc">Structured evidence for executed commands and observed outcomes.</p>
-        </article>
-        <article class="feature-card">
-          <h3 class="feature-name">Changes</h3>
-          <p class="feature-desc">Repository changes observed during execution windows.</p>
-        </article>
-        <article class="feature-card">
-          <h3 class="feature-name">Verify</h3>
-          <p class="feature-desc">Explicit verification checks with retained run history.</p>
-        </article>
-      </div>
-    </section>
-
-    <!-- Installation Steps -->
-    <section class="section">
-      <h2 class="section-title">Installation on macOS</h2>
-      <ol class="steps-list">
-        <li><strong>Download:</strong> Download the ExecRelay DMG.</li>
-        <li><strong>Open:</strong> Open the downloaded DMG file.</li>
-        <li><strong>Install:</strong> Drag ExecRelay into your Applications folder.</li>
-        <li><strong>Launch:</strong> Launch ExecRelay from Applications.</li>
-      </ol>
-    </section>
-
-    <!-- System Requirements -->
-    <section class="section">
-      <h2 class="section-title">System Requirements</h2>
-      <div class="info-box">
-        <ul class="spec-list">
-          <li>
-            <span class="spec-label">Operating System</span>
-            <span class="spec-value">macOS 11.0 (Big Sur) or later</span>
-          </li>
-          <li>
-            <span class="spec-label">Architecture</span>
-            <span class="spec-value">Apple Silicon (arm64 tested; Intel x86_64 pending)</span>
-          </li>
-          <li>
-            <span class="spec-label">Runtime Engine</span>
-            <span class="spec-value">Native Rust / Tauri v2</span>
-          </li>
-          <li>
-            <span class="spec-label">Account Requirement</span>
-            <span class="spec-value">None (local-first)</span>
-          </li>
-        </ul>
-      </div>
-    </section>
-
-    <!-- Security & Trust -->
-    <section class="section">
-      <h2 class="section-title">Security &amp; Trust Model</h2>
-      <div class="text-callout">
-        ExecRelay uses native process outcomes and explicit verification results rather than inferring engineering success from terminal text.
-      </div>
-    </section>
-
-    <!-- Privacy & Local-First -->
-    <section class="section">
-      <h2 class="section-title">Privacy &amp; Local-First</h2>
-      <div class="text-callout">
-        ExecRelay v0.1 requires no ExecRelay account. Core execution happens locally on your computer, and local workspace data remains on the local application unless you choose to use external tools from the terminal. Normal terminal operation survives even if telemetry fails.
-      </div>
-    </section>
-  </main>
-
-  <footer class="site-footer">
-    <div class="footer-container">
-      <div class="footer-brand">
-        <strong>ExecRelay</strong> &mdash; Local-first execution harness.
-      </div>
-      <ul class="footer-links">
-        <li><a href="https://github.com/MaikesiG/ExecRelay" target="_blank" rel="noopener noreferrer">GitHub</a></li>
-        <li><a href="https://github.com/MaikesiG/ExecRelay/releases" target="_blank" rel="noopener noreferrer">Releases</a></li>
-        <li><a href="https://github.com/MaikesiG/ExecRelay/issues" target="_blank" rel="noopener noreferrer">Issues</a></li>
-      </ul>
-    </div>
-  </footer>
-</body>
+    </footer>
+  </body>
 </html>
