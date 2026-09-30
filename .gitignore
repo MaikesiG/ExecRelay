@@ -1,0 +1,20 @@
+# React / Vite
+app/node_modules/
+app/dist/
+
+# Rust / Cargo / Tauri build artifacts
+native/target/
+native/gen/
+
+# Environment files and local application data
+.env
+.env.*
+!.env.example
+*.db
+*.sqlite
+*.sqlite3
+
+# Editor and operating system
+.DS_Store
+.vscode/
+.idea/

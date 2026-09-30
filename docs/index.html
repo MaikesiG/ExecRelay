@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ExecRelay — Run anything. Trace everything. Verify what actually happened.</title>
+  <meta name="description" content="ExecRelay is a local-first engineering execution environment that combines a real terminal with structured execution capture, repository change tracking, and explicit verification.">
+  <link rel="icon" type="image/png" href="assets/icon.png">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="site-header">
+    <div class="nav-container">
+      <a href="index.html" class="brand">
+        <img src="assets/icon.png" alt="ExecRelay Terminal icon" class="brand-icon">
+        <span>ExecRelay</span>
+      </a>
+      <nav aria-label="Main navigation">
+        <ul class="nav-links">
+          <li><a href="index.html" class="active" aria-current="page">Overview</a></li>
+          <li><a href="download.html">Download</a></li>
+          <li><a href="https://github.com/MaikesiG/traceRelay" target="_blank" rel="noopener noreferrer">GitHub</a></li>
+        </ul>
+      </nav>
+    </div>
+  </header>
+
+  <main class="content-container">
+    <section class="hero">
+      <div class="hero-badge">ExecRelay Terminal v0.1.0</div>
+      <h1 class="hero-title">ExecRelay Terminal</h1>
+      <p class="hero-tagline">Run anything. Trace everything. Verify what actually happened.</p>
+      <p class="hero-description">
+        A local-first engineering terminal for capturing execution evidence, observing repository changes, and explicitly verifying engineering work.
+      </p>
+      <div class="cta-group">
+        <a href="download.html" class="btn btn-primary">Download for macOS</a>
+        <a href="https://github.com/MaikesiG/traceRelay" class="btn btn-secondary" target="_blank" rel="noopener noreferrer">View on GitHub</a>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2 class="section-title">Core Surfaces</h2>
+      <p class="section-intro">Four integrated surfaces designed for transparent, verified engineering execution.</p>
+      <div class="feature-grid">
+        <article class="feature-card">
+          <h3 class="feature-name">Terminal</h3>
+          <p class="feature-desc">Real PTY-backed engineering terminal for everyday command-line workflows, split panes, and interactive tools.</p>
+        </article>
+        <article class="feature-card">
+          <h3 class="feature-name">Capture</h3>
+          <p class="feature-desc">Structured evidence for executed commands and observed outcomes, preserving raw process truth without inferring success from terminal text.</p>
+        </article>
+        <article class="feature-card">
+          <h3 class="feature-name">Changes</h3>
+          <p class="feature-desc">Repository changes observed during execution windows, tracking file modifications alongside process runs.</p>
+        </article>
+        <article class="feature-card">
+          <h3 class="feature-name">Verify</h3>
+          <p class="feature-desc">Explicit verification checks with retained run history, deterministic criteria evaluations, and monorepo working directory support.</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2 class="section-title">Trust &amp; Verification</h2>
+      <div class="text-callout">
+        <strong>Process Truth:</strong> ExecRelay uses native process outcomes and explicit verification results rather than inferring engineering success from terminal text. Exit codes and process supervision establish ground truth.
+      </div>
+    </section>
+
+    <section class="section">
+      <h2 class="section-title">Local-First Architecture</h2>
+      <div class="text-callout">
+        <strong>Privacy by Design:</strong> ExecRelay v0.1 requires no ExecRelay account. Core execution runs entirely on your local machine, and local workspace data remains on the local application unless you choose to use external network tools from your terminal. Normal terminal operation remains independent from telemetry features—the terminal survives even if telemetry fails.
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="footer-container">
+      <div class="footer-brand">
+        <strong>ExecRelay</strong> &mdash; Local-first execution harness.
+      </div>
+      <ul class="footer-links">
+        <li><a href="https://github.com/MaikesiG/traceRelay" target="_blank" rel="noopener noreferrer">GitHub</a></li>
+        <li><a href="https://github.com/MaikesiG/traceRelay/releases" target="_blank" rel="noopener noreferrer">Releases</a></li>
+        <li><a href="https://github.com/MaikesiG/traceRelay/issues" target="_blank" rel="noopener noreferrer">Issues</a></li>
+      </ul>
+    </div>
+  </footer>
+</body>
+</html>

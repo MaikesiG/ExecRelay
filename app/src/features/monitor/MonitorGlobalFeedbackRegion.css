@@ -1,0 +1,136 @@
+/**
+ * MonitorGlobalFeedbackRegion.css
+ * Floating developer-tool feedback banners for CapTerm Monitor.
+ * HARDEN-011
+ */
+
+.monitor-global-feedback-region {
+  position: absolute;
+  top: 30px;
+  left: 10px;
+  right: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  z-index: 50;
+  pointer-events: none;
+}
+
+.monitor-feedback-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 11px;
+  line-height: 1.35;
+  box-sizing: border-box;
+  animation: feedbackSlideIn 140ms ease-out;
+  border: 1px solid transparent;
+  pointer-events: auto;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(10px);
+}
+
+@keyframes feedbackSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.monitor-feedback-left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  flex: 1;
+}
+
+.monitor-feedback-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 11px;
+  flex-shrink: 0;
+}
+
+.monitor-feedback-body {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  min-width: 0;
+  overflow: hidden;
+  flex-wrap: wrap;
+}
+
+.monitor-feedback-title {
+  font-weight: 600;
+  color: #f0f6fc;
+  white-space: nowrap;
+}
+
+.monitor-feedback-message {
+  color: #8b949e;
+  font-size: 10.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.monitor-feedback-dismiss-btn {
+  background: transparent;
+  border: none;
+  color: #8b949e;
+  font-size: 14px;
+  cursor: pointer;
+  padding: 0 4px;
+  margin-left: 6px;
+  border-radius: 3px;
+  line-height: 1;
+  flex-shrink: 0;
+  transition: all 100ms ease;
+}
+
+.monitor-feedback-dismiss-btn:hover {
+  color: #f0f6fc;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+/* Level Themes */
+.monitor-feedback-card--success {
+  background: rgba(46, 160, 67, 0.22);
+  border-color: rgba(46, 160, 67, 0.45);
+}
+.monitor-feedback-icon--success {
+  color: #3fb950;
+}
+
+.monitor-feedback-card--info {
+  background: rgba(56, 139, 253, 0.22);
+  border-color: rgba(56, 139, 253, 0.45);
+}
+.monitor-feedback-icon--info {
+  color: #58a6ff;
+}
+
+.monitor-feedback-card--warning {
+  background: rgba(187, 128, 9, 0.22);
+  border-color: rgba(187, 128, 9, 0.45);
+}
+.monitor-feedback-icon--warning {
+  color: #d29922;
+}
+
+.monitor-feedback-card--error {
+  background: rgba(248, 81, 73, 0.22);
+  border-color: rgba(248, 81, 73, 0.45);
+}
+.monitor-feedback-icon--error {
+  color: #f85149;
+}

@@ -1,0 +1,239 @@
+/**
+ * TraceRelay Verification Modal Styles
+ * Dense developer tool styling matching WorkspaceDeleteModal and CloseCapturedPaneModal.
+ */
+
+.verification-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.65);
+  backdrop-filter: blur(2px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 16px;
+}
+
+.verification-modal-dialog {
+  background: #0f172a;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.5);
+  width: 100%;
+  max-width: 440px;
+  display: flex;
+  flex-direction: column;
+  color: #f1f5f9;
+  font-family: inherit;
+  overflow: hidden;
+}
+
+.verification-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.verification-modal-title {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: #f8fafc;
+}
+
+.verification-modal-close-btn {
+  background: transparent;
+  border: none;
+  color: #94a3b8;
+  font-size: 18px;
+  cursor: pointer;
+  line-height: 1;
+  padding: 0;
+  width: var(--monitor-icon-button-size, 28px);
+  height: var(--monitor-icon-button-size, 28px);
+  min-width: var(--monitor-icon-button-size, 28px);
+  min-height: var(--monitor-icon-button-size, 28px);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--monitor-control-radius, 6px);
+  box-sizing: border-box;
+}
+
+.verification-modal-close-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #f8fafc;
+}
+
+.verification-modal-body {
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.verification-modal-error {
+  padding: 6px 10px;
+  border-radius: 4px;
+  background: rgba(239, 68, 68, 0.15);
+  border: 1px solid rgba(239, 68, 68, 0.35);
+  color: #fca5a5;
+  font-size: 11px;
+}
+
+.verification-form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.verification-form-label {
+  font-size: 11px;
+  font-weight: 500;
+  color: #94a3b8;
+}
+
+.verification-form-input {
+  background: rgba(15, 23, 42, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 4px;
+  color: #f8fafc;
+  padding: 6px 8px;
+  font-size: 12px;
+  outline: none;
+  transition: border-color 120ms ease;
+}
+
+.verification-form-input:focus {
+  border-color: #3b82f6;
+}
+
+.verification-form-input--command {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 11.5px;
+}
+
+.verification-form-input--working-directory {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 11.5px;
+  text-transform: none;
+}
+
+.verification-form-hint {
+  font-size: 10px;
+  color: #64748b;
+}
+
+.verification-checkbox-option {
+  margin-top: 4px;
+}
+
+.verification-checkbox-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: #cbd5e1;
+  cursor: pointer;
+}
+
+.verification-profile-meta {
+  font-size: 11px;
+  color: #64748b;
+}
+
+.verification-delete-warning-box {
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.25);
+  border-radius: 4px;
+  padding: 8px 10px;
+  font-size: 11px;
+  color: #fca5a5;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.verification-delete-warning-box p {
+  margin: 0;
+}
+
+.verification-delete-warning-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.verification-modal-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(15, 23, 42, 0.5);
+}
+
+.verification-modal-footer-right {
+  display: flex;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.verification-btn {
+  height: var(--monitor-control-height, 28px);
+  min-height: var(--monitor-control-height, 28px);
+  max-height: var(--monitor-control-height, 28px);
+  padding-inline: 10px;
+  padding-block: 0;
+  border-radius: var(--monitor-control-radius, 6px);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--monitor-control-gap, 6px);
+  transition: all 120ms ease;
+  border: 1px solid transparent;
+  line-height: 1;
+  box-sizing: border-box;
+}
+
+.verification-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.verification-btn--secondary {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.12);
+  color: #cbd5e1;
+}
+
+.verification-btn--secondary:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.14);
+  color: #ffffff;
+}
+
+.verification-btn--primary {
+  background: #2563eb;
+  border-color: #3b82f6;
+  color: #ffffff;
+}
+
+.verification-btn--primary:hover:not(:disabled) {
+  background: #1d4ed8;
+}
+
+.verification-btn--danger {
+  background: rgba(239, 68, 68, 0.15);
+  border-color: rgba(239, 68, 68, 0.35);
+  color: #fca5a5;
+}
+
+.verification-btn--danger:hover:not(:disabled) {
+  background: rgba(239, 68, 68, 0.28);
+  color: #fee2e2;
+}

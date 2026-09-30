@@ -1,0 +1,92 @@
+/**
+ * MonitorFooter.css
+ * Fixed/sticky bottom footer for cross-domain EvidenceSelection actions in Monitor.
+ * HARDEN-011
+ */
+
+.monitor-footer {
+  position: sticky;
+  bottom: -8px;
+  margin: auto -8px -8px -8px;
+  padding: 6px 10px;
+  background: #0d1422;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-shrink: 0;
+  z-index: 25;
+  box-sizing: border-box;
+}
+
+.monitor-footer-info {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.monitor-footer-count {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: #60a5fa;
+  white-space: nowrap;
+}
+
+.monitor-footer-summary {
+  font-size: 11px;
+  color: #94a3b8;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.monitor-footer-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--monitor-control-gap, 6px);
+  flex-shrink: 0;
+}
+
+.monitor-footer .compact-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: var(--monitor-control-height, 28px);
+  min-height: var(--monitor-control-height, 28px);
+  max-height: var(--monitor-control-height, 28px);
+  padding-inline: var(--monitor-control-padding-inline, 9px);
+  padding-block: 0;
+  box-sizing: border-box;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1;
+  border-radius: var(--monitor-control-radius, 6px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
+  color: #e2e8f0;
+  cursor: pointer;
+  transition: all 120ms ease;
+  white-space: nowrap;
+}
+
+.monitor-footer .compact-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #ffffff;
+  border-color: rgba(255, 255, 255, 0.18);
+}
+
+.monitor-footer .compact-btn--primary {
+  background: #2563eb;
+  border-color: #3b82f6;
+  color: #ffffff;
+  font-weight: 600;
+}
+
+.monitor-footer .compact-btn--primary:hover {
+  background: #1d4ed8;
+  border-color: #60a5fa;
+}

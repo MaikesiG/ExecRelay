@@ -1,0 +1,595 @@
+/**
+ * Repository Engineering Evidence Stylesheet
+ *
+ * Dark terminal-native styling subordinate to execution output and verification.
+ * Follows the compact desktop utility visual language.
+ */
+
+.repository-evidence-container {
+  margin: 6px 0;
+  padding: 6px 8px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 11px;
+  flex-shrink: 0;
+}
+
+.repository-evidence-header {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.repository-evidence-header-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.repository-evidence-title-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.repository-evidence-title {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #8b949e;
+}
+
+.repository-evidence-meta-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 2px 0;
+}
+
+.repository-evidence-meta-left {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.repository-evidence-meta-right {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.repository-commit-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.repository-copy-commit-btn,
+.repository-open-finder-btn {
+  width: var(--monitor-icon-button-size, 28px);
+  min-width: var(--monitor-icon-button-size, 28px);
+  max-width: var(--monitor-icon-button-size, 28px);
+  height: var(--monitor-icon-button-size, 28px);
+  min-height: var(--monitor-icon-button-size, 28px);
+  max-height: var(--monitor-icon-button-size, 28px);
+  opacity: 0.65;
+}
+
+.repository-copy-commit-btn:hover:not(:disabled),
+.repository-open-finder-btn:hover:not(:disabled) {
+  opacity: 1;
+}
+
+.repository-refresh-btn {
+  width: var(--monitor-icon-button-size, 28px);
+  min-width: var(--monitor-icon-button-size, 28px);
+  max-width: var(--monitor-icon-button-size, 28px);
+  height: var(--monitor-icon-button-size, 28px);
+  min-height: var(--monitor-icon-button-size, 28px);
+  max-height: var(--monitor-icon-button-size, 28px);
+}
+
+.repository-branch-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 500;
+  color: #58a6ff;
+  background: rgba(56, 139, 253, 0.1);
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.repository-commit-badge {
+  font-size: 11px;
+  color: #8b949e;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.repository-header-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--monitor-control-gap, 6px);
+}
+
+/* Compact button system: 28px height, 12px font */
+.compact-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--monitor-control-gap, 6px);
+  height: var(--monitor-control-height, 28px);
+  min-height: var(--monitor-control-height, 28px);
+  max-height: var(--monitor-control-height, 28px);
+  padding-inline: var(--monitor-control-padding-inline, 9px);
+  padding-block: 0;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--monitor-control-radius, 6px);
+  background: rgba(255, 255, 255, 0.03);
+  color: #c9d1d9;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 120ms ease;
+  box-sizing: border-box;
+}
+
+.compact-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.18);
+  color: #f0f6fc;
+}
+
+.compact-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.compact-btn--primary {
+  background: #2563eb;
+  border-color: #3b82f6;
+  color: #ffffff;
+}
+
+.compact-btn--primary:hover:not(:disabled) {
+  background: #1d4ed8;
+  border-color: #60a5fa;
+}
+
+/* Compact icon-only button: 28x28 */
+.compact-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--monitor-icon-button-size, 28px);
+  min-width: var(--monitor-icon-button-size, 28px);
+  max-width: var(--monitor-icon-button-size, 28px);
+  height: var(--monitor-icon-button-size, 28px);
+  min-height: var(--monitor-icon-button-size, 28px);
+  max-height: var(--monitor-icon-button-size, 28px);
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--monitor-control-radius, 6px);
+  background: transparent;
+  color: #8b949e;
+  cursor: pointer;
+  transition: all 120ms ease;
+  box-sizing: border-box;
+  line-height: 1;
+}
+
+.compact-icon-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.18);
+  color: #f0f6fc;
+}
+
+.compact-checkbox {
+  cursor: pointer;
+  width: 14px;
+  height: 14px;
+  accent-color: #3b82f6;
+  margin: 0;
+  flex-shrink: 0;
+}
+
+.repository-unsupported-note {
+  font-size: 11px;
+  color: #8b949e;
+  font-style: italic;
+  padding: 2px 0;
+}
+
+.repository-error-note {
+  font-size: 11px;
+  color: #f87171;
+  background: rgba(248, 113, 113, 0.08);
+  border: 1px solid rgba(248, 113, 113, 0.2);
+  border-radius: var(--monitor-control-radius, 6px);
+  padding: 6px 10px;
+  margin: 4px 0;
+}
+
+.repository-error-title {
+  font-weight: 500;
+  margin: 0 0 2px 0;
+  color: #fca5a5;
+}
+
+.repository-error-message {
+  margin: 0;
+  color: #8b949e;
+  font-family: var(--font-mono, monospace);
+  font-size: 10px;
+}
+
+.repository-snapshot-body {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.repository-status-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.repository-header-copy-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--monitor-control-gap, 6px);
+  margin-left: auto;
+}
+
+.repository-copy-paths-btn,
+.repository-copy-changes-btn {
+  width: var(--monitor-icon-button-size, 28px);
+  min-width: var(--monitor-icon-button-size, 28px);
+  max-width: var(--monitor-icon-button-size, 28px);
+  height: var(--monitor-icon-button-size, 28px);
+  min-height: var(--monitor-icon-button-size, 28px);
+  max-height: var(--monitor-icon-button-size, 28px);
+  padding: 0;
+  padding-block: 0;
+  box-sizing: border-box;
+}
+
+.repository-clean-pill {
+  font-size: 11px;
+  color: #3fb950;
+  background: rgba(46, 160, 67, 0.1);
+  padding: 2px 6px;
+  border-radius: 4px;
+  border: 1px solid rgba(46, 160, 67, 0.25);
+}
+
+.repository-dirty-stats {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.repository-change-count {
+  font-weight: 500;
+  color: #c9d1d9;
+}
+
+.repository-numstat-total {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.numstat-ins {
+  color: #3fb950;
+  font-weight: 500;
+}
+
+.numstat-del {
+  color: #f85149;
+  font-weight: 500;
+}
+
+.repository-files-section {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.repository-selection-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 2px 4px;
+  background: rgba(0, 0, 0, 0.15);
+  border-radius: 4px;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.repository-select-all-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+  user-select: none;
+  font-size: 11px;
+  color: #8b949e;
+}
+
+.repository-selected-count {
+  font-size: 11px;
+  font-weight: 500;
+  color: #58a6ff;
+}
+
+.repository-toolbar-copy-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.repository-copy-btn {
+  height: var(--monitor-control-height, 28px);
+  min-height: var(--monitor-control-height, 28px);
+  max-height: var(--monitor-control-height, 28px);
+  font-size: 12px;
+  line-height: 1;
+  padding-inline: var(--monitor-control-padding-inline, 9px);
+  padding-block: 0;
+}
+
+.repository-files-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.repository-file-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 4px;
+  font-size: 11px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid transparent;
+  border-radius: 4px;
+  transition: all 100ms ease;
+}
+
+.repository-file-item:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.repository-file-item--selected {
+  background: rgba(56, 139, 253, 0.08);
+  border-color: rgba(56, 139, 253, 0.25);
+}
+
+.repository-row-checkbox {
+  margin: 0;
+}
+
+.file-status-tag {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  min-width: 18px;
+  height: 16px;
+  font-size: 10px;
+  font-weight: 600;
+  border-radius: 2px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  line-height: 1;
+  text-align: center;
+  flex-shrink: 0;
+  user-select: none;
+}
+
+.file-status-tag--modified {
+  color: #d29922;
+  background: rgba(210, 153, 34, 0.15);
+}
+
+.file-status-tag--added {
+  color: #3fb950;
+  background: rgba(46, 160, 67, 0.15);
+}
+
+.file-status-tag--deleted {
+  color: #f85149;
+  background: rgba(248, 81, 73, 0.15);
+}
+
+.file-status-tag--renamed {
+  color: #a371f7;
+  background: rgba(163, 113, 247, 0.15);
+}
+
+.file-status-tag--untracked {
+  color: #56d364;
+  background: rgba(46, 160, 67, 0.15);
+}
+
+.file-status-tag--copied {
+  color: #58a6ff;
+  background: rgba(56, 139, 253, 0.15);
+}
+
+.file-status-tag--conflicted {
+  color: #f85149;
+  background: rgba(248, 81, 73, 0.3);
+}
+
+.file-status-tag--unknown {
+  color: #8b949e;
+  background: rgba(139, 148, 158, 0.15);
+}
+
+.repository-file-path-prev {
+  color: #8b949e;
+}
+
+.repository-file-path-arrow {
+  color: #a371f7;
+  padding: 0 3px;
+}
+
+.repository-file-path-curr {
+  color: #c9d1d9;
+}
+
+.repository-file-path {
+  flex: 1;
+  color: #c9d1d9;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-numstat {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  font-size: 10px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  min-width: 56px;
+  text-align: right;
+  flex-shrink: 0;
+  user-select: none;
+}
+
+.file-numstat--binary {
+  color: #8b949e;
+  font-style: italic;
+}
+
+.repository-row-copy-btn {
+  width: 22px;
+  min-width: 22px;
+  height: 22px;
+  min-height: 22px;
+  opacity: 0.6;
+}
+
+.repository-row-copy-btn:hover {
+  opacity: 1;
+}
+
+.repository-more-files {
+  font-size: 10px;
+  color: #8b949e;
+  font-style: italic;
+  padding-left: 4px;
+}
+
+.repository-uncollected-prompt {
+  font-size: 11px;
+  color: #8b949e;
+  font-style: italic;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.spin {
+  animation: spin 1s linear infinite;
+}
+
+.repository-unbound-state,
+.repository-no-git-state {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 14px 16px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px dashed var(--border-muted, rgba(255, 255, 255, 0.12));
+  border-radius: 6px;
+  font-size: 12px;
+  color: var(--muted, #8b949e);
+  margin-top: 6px;
+}
+
+.repository-unbound-prompt,
+.repository-no-git-title {
+  margin: 0;
+  font-weight: 500;
+  color: var(--text, #c9d1d9);
+}
+
+.repository-no-git-meta {
+  margin: 0;
+  font-family: monospace;
+  font-size: 11px;
+  color: #8b949e;
+  word-break: break-all;
+}
+
+.repository-no-git-sub {
+  color: #6e7681;
+}
+
+.repository-open-folder-btn {
+  height: var(--monitor-control-height, 28px);
+  min-height: var(--monitor-control-height, 28px);
+  max-height: var(--monitor-control-height, 28px);
+  padding-inline: 12px;
+  padding-block: 0;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--monitor-control-gap, 6px);
+  border-radius: var(--monitor-control-radius, 6px);
+  background: rgba(124, 140, 255, 0.15) !important;
+  color: #ffffff !important;
+  border: 1px solid rgba(124, 140, 255, 0.4) !important;
+  font-weight: 500;
+}
+
+.repository-open-folder-btn:hover {
+  background: rgba(124, 140, 255, 0.25) !important;
+  border-color: rgba(124, 140, 255, 0.6) !important;
+}
+
+.repository-workspace-name {
+  font-size: 11px;
+  font-weight: 600;
+  color: #7c8cff;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: rgba(124, 140, 255, 0.1);
+}

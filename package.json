@@ -1,0 +1,17 @@
+{
+  "name": "execrelay",
+  "private": true,
+  "version": "0.1.0",
+  "description": "A local-first AI-native terminal that turns runtime output into safe, structured AI context.",
+  "scripts": {
+    "dev": "npm --prefix app run dev",
+    "build": "npm --prefix app run build",
+    "test": "npm --prefix app run test",
+    "lint": "npm --prefix app run lint",
+    "typecheck": "npm --prefix app run typecheck",
+    "tauri:dev": "cd native && cargo tauri dev",
+    "tauri:build": "cd native && cargo tauri build",
+    "check": "npm --prefix app run build && cd native && cargo check",
+    "icons": "bash ./scripts/generate-icons.sh"
+  }
+}

@@ -1,0 +1,55 @@
+/**
+ * ActiveMonitorView.css
+ * Dedicated scroll owner for Monitor content.
+ * Positioned as sibling above MonitorFooter so content scrolls cleanly without overlap.
+ * HARDEN-016
+ */
+
+.active-monitor-view {
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
+  position: relative;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
+  display: flex;
+  flex-direction: column;
+}
+
+.active-monitor-view::-webkit-scrollbar {
+  width: 6px;
+}
+
+.active-monitor-view::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.active-monitor-view::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 3px;
+}
+
+.active-monitor-view::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+/* Ensure child views expand to natural content height and delegate scrolling to ActiveMonitorView */
+.active-monitor-view .context-panel-content,
+.active-monitor-view .changes-view-surface,
+.active-monitor-view .verification-view-surface,
+.active-monitor-view .agents-view-surface,
+.active-monitor-view .governance-view-surface {
+  width: 100%;
+  min-height: min-content;
+  flex: 1 0 auto;
+}
+
+.active-monitor-view .verification-panel,
+.active-monitor-view .agents-panel,
+.active-monitor-view .agent-run-comparison-view {
+  height: auto;
+  min-height: min-content;
+  overflow-y: visible;
+}

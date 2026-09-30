@@ -1,0 +1,314 @@
+/**
+ * ChromeTabs styles
+ *
+ * Canonical unified styling for Workspace tabs, Terminal tabs, and Chrome close buttons.
+ */
+
+:root {
+  --workspace-tab-accent: var(--accent, #7c8cff);
+  --terminal-tab-accent: var(--color-success, var(--green, #34d399));
+  --close-button-fg: var(--dim, #64748b);
+  --close-button-hover-bg: rgba(239, 68, 68, 0.2);
+  --close-button-hover-fg: #fca5a5;
+  --close-button-active-bg: rgba(239, 68, 68, 0.3);
+  --close-button-active-fg: #ffffff;
+  --tab-strip-gap: 2px;
+}
+
+/* Tab strip layout: uniform spacing where gap equals outer insets */
+.workspace-tabs,
+.terminal-tabs,
+.workspace-tab-bar {
+  gap: var(--tab-strip-gap, 2px);
+  padding: 0 var(--tab-strip-gap, 2px);
+  padding-inline: var(--tab-strip-gap, 2px);
+}
+
+.workspace-tabs-list,
+.terminal-tabs-list,
+.workspace-tab-bar-list {
+  --tab-strip-gap: 2px;
+  display: flex;
+  align-items: center;
+  gap: var(--tab-strip-gap, 2px);
+  padding: 0;
+  padding-inline: 0;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+/* Hide visible horizontal scrollbars across all tab strips */
+.workspace-tabs-list::-webkit-scrollbar,
+.terminal-tabs-list::-webkit-scrollbar,
+.workspace-tab-bar-list::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+/* Subtle iTerm-like edge fade when tabs overflow horizontally */
+.workspace-tabs-list[data-overflow-left="true"][data-overflow-right="true"],
+.terminal-tabs-list[data-overflow-left="true"][data-overflow-right="true"],
+.workspace-tab-bar-list[data-overflow-left="true"][data-overflow-right="true"] {
+  -webkit-mask-image: linear-gradient(
+    to right,
+    transparent 0,
+    black 16px,
+    black calc(100% - 16px),
+    transparent 100%
+  );
+  mask-image: linear-gradient(
+    to right,
+    transparent 0,
+    black 16px,
+    black calc(100% - 16px),
+    transparent 100%
+  );
+}
+
+.workspace-tabs-list[data-overflow-left="true"]:not([data-overflow-right="true"]),
+.terminal-tabs-list[data-overflow-left="true"]:not([data-overflow-right="true"]),
+.workspace-tab-bar-list[data-overflow-left="true"]:not([data-overflow-right="true"]) {
+  -webkit-mask-image: linear-gradient(
+    to right,
+    transparent 0,
+    black 16px,
+    black 100%
+  );
+  mask-image: linear-gradient(
+    to right,
+    transparent 0,
+    black 16px,
+    black 100%
+  );
+}
+
+.workspace-tabs-list[data-overflow-right="true"]:not([data-overflow-left="true"]),
+.terminal-tabs-list[data-overflow-right="true"]:not([data-overflow-left="true"]),
+.workspace-tab-bar-list[data-overflow-right="true"]:not([data-overflow-left="true"]) {
+  -webkit-mask-image: linear-gradient(
+    to right,
+    black 0,
+    black calc(100% - 16px),
+    transparent 100%
+  );
+  mask-image: linear-gradient(
+    to right,
+    black 0,
+    black calc(100% - 16px),
+    transparent 100%
+  );
+}
+
+/* Shared base for tabs */
+.chrome-tab {
+  display: inline-flex;
+  align-items: center;
+  position: relative;
+  height: 28px;
+  min-height: 28px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--muted, #8b9bb8);
+  transition: background 150ms ease, border-color 150ms ease, color 150ms ease;
+  flex-shrink: 0;
+  box-sizing: border-box;
+  font-size: 12px;
+}
+
+.chrome-tab:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text, #f8fafc);
+}
+
+.chrome-tab--active,
+.chrome-tab[data-active="true"] {
+  color: #ffffff;
+  font-weight: 600;
+}
+
+/* Workspace tab variant */
+.chrome-tab--workspace {
+  max-width: 240px;
+}
+
+.chrome-tab--workspace.chrome-tab--active,
+.chrome-tab--workspace[data-active="true"],
+.workspace-tab-item--active {
+  border-color: rgba(124, 140, 255, 0.45);
+  background: rgba(124, 140, 255, 0.14);
+  color: #ffffff;
+  font-weight: 600;
+}
+
+/* Terminal tab variant */
+.chrome-tab--terminal {
+  max-width: 220px;
+}
+
+.chrome-tab--terminal.chrome-tab--active,
+.chrome-tab--terminal[data-active="true"],
+.terminal-tab--active,
+.workspace-tab--active {
+  border-color: rgba(52, 211, 153, 0.35);
+  background: rgba(255, 255, 255, 0.08);
+  color: #ffffff;
+  font-weight: 600;
+}
+
+/* Shared full-width top accent line base geometry for tabs */
+.chrome-tab::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  border-top-left-radius: 6px;
+  border-top-right-radius: 6px;
+  border-top-left-radius: inherit;
+  border-top-right-radius: inherit;
+  background: transparent;
+  transition: background-color 150ms ease, opacity 150ms ease;
+  pointer-events: none;
+}
+
+/* Active tab top accent geometry: spans full width */
+.chrome-tab[data-active="true"]::before,
+.chrome-tab--active::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  border-top-left-radius: 6px;
+  border-top-right-radius: 6px;
+  border-top-left-radius: inherit;
+  border-top-right-radius: inherit;
+  opacity: 1;
+}
+
+/* Subtle hover state for inactive tabs */
+.chrome-tab--workspace:hover:not(.chrome-tab--active):not([data-active="true"])::before {
+  background: rgba(124, 140, 255, 0.25);
+  opacity: 0.5;
+}
+
+.chrome-tab--terminal:hover:not(.chrome-tab--active):not([data-active="true"])::before,
+.terminal-tab:hover:not(.terminal-tab--active):not([data-active="true"])::before,
+.workspace-tab:hover:not(.workspace-tab--active):not([data-active="true"])::before {
+  background: rgba(52, 211, 153, 0.25);
+  opacity: 0.5;
+}
+
+/* Active tab top accent color variants */
+.chrome-tab--workspace[data-active="true"]::before,
+.chrome-tab--workspace.chrome-tab--active::before,
+.workspace-tab-item--active::before {
+  background: var(--workspace-tab-accent);
+}
+
+.chrome-tab--terminal[data-active="true"]::before,
+.chrome-tab--terminal.chrome-tab--active::before,
+.terminal-tab--active::before,
+.terminal-tab[data-active="true"]::before,
+.workspace-tab--active::before,
+.workspace-tab[data-active="true"]::before {
+  background: var(--terminal-tab-accent);
+}
+
+/* Unified Canonical Close Button ("x") */
+.chrome-close-button,
+.close-button,
+.workspace-tab-item-close,
+.workspace-tab-close,
+.terminal-tab-close,
+.terminal-pane-close-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  color: var(--close-button-fg, var(--dim, #64748b));
+  border-radius: 4px;
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+  outline: none;
+  box-sizing: border-box;
+  flex-shrink: 0;
+  transition: background-color 150ms ease, color 150ms ease;
+}
+
+.chrome-close-button--tab,
+.workspace-tab-item-close,
+.workspace-tab-close,
+.terminal-tab-close {
+  width: 18px;
+  height: 18px;
+  font-size: 14px;
+  margin-right: 4px;
+  margin-left: 2px;
+}
+
+.chrome-close-button--pane,
+.terminal-pane-close-button {
+  width: 18px;
+  height: 18px;
+  font-size: 13px;
+  border-radius: 3px;
+}
+
+.chrome-close-button:hover:not(:disabled),
+.close-button:hover:not(:disabled),
+.workspace-tab-item-close:hover:not(:disabled),
+.workspace-tab-close:hover:not(:disabled),
+.terminal-tab-close:hover:not(:disabled),
+.terminal-pane-close-button:hover:not(:disabled) {
+  background: var(--close-button-hover-bg, rgba(239, 68, 68, 0.2));
+  color: var(--close-button-hover-fg, #fca5a5);
+}
+
+.chrome-close-button:active:not(:disabled),
+.close-button:active:not(:disabled),
+.workspace-tab-item-close:active:not(:disabled),
+.workspace-tab-close:active:not(:disabled),
+.terminal-tab-close:active:not(:disabled),
+.terminal-pane-close-button:active:not(:disabled) {
+  background: var(--close-button-active-bg, rgba(239, 68, 68, 0.3));
+  color: var(--close-button-active-fg, #ffffff);
+}
+
+.chrome-close-button:focus-visible,
+.close-button:focus-visible,
+.workspace-tab-item-close:focus-visible,
+.workspace-tab-close:focus-visible,
+.terminal-tab-close:focus-visible,
+.terminal-pane-close-button:focus-visible {
+  outline: 2px solid var(--accent, #7c8cff);
+  outline-offset: 1px;
+}
+
+.chrome-close-button:disabled,
+.close-button:disabled,
+.workspace-tab-close:disabled,
+.terminal-tab-close:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+/* Spacer for pane header when close button is hidden on final remaining pane */
+.terminal-pane-header-spacer {
+  display: inline-block;
+  width: 18px;
+  height: 18px;
+  pointer-events: none;
+  visibility: hidden;
+}

@@ -1,0 +1,491 @@
+/**
+ * TerminalPaneLayout styles
+ *
+ * Minimal recursive panel layout container for terminal tabs.
+ */
+
+:root {
+  --terminal-surface: #060a11;
+  --terminal-surface-active: #090e1a;
+  --divider-muted: #19253a;
+  --divider-hover: #334466;
+}
+
+.terminal-pane-layout {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  position: relative;
+  background: var(--terminal-surface);
+}
+
+.panel-split-node {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  position: relative;
+}
+
+.panel-split-node--horizontal {
+  flex-direction: row;
+}
+
+.panel-split-node--vertical {
+  flex-direction: column;
+}
+
+.split-node-branch {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+}
+
+.terminal-pane {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--terminal-surface);
+  border: none;
+  box-shadow: none;
+  border-radius: 0;
+  transition: background-color 150ms ease;
+}
+
+.terminal-pane[data-active="true"],
+.terminal-pane--active {
+  background: var(--terminal-surface-active);
+  border: none;
+  box-shadow: none;
+}
+
+/* Terminal Pane Header (iTerm-style integrated chrome) */
+.terminal-pane-header {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  height: var(--pane-header-height, 25px);
+  min-height: var(--pane-header-height, 25px);
+  max-height: var(--pane-header-height, 25px);
+  padding: 0 6px;
+  gap: 6px;
+  background: #0d1422;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  user-select: none;
+  flex-shrink: 0;
+  box-sizing: border-box;
+  transition: background-color 150ms ease, border-color 150ms ease;
+  z-index: 2;
+}
+
+/* Single-pane mode: Neutral compact header, no accent tint */
+.terminal-pane-header[data-multi-pane="false"] {
+  background: #0d1422;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.terminal-pane-header[data-multi-pane="false"][data-active="true"] {
+  background: #111a2d;
+  border-bottom-color: rgba(255, 255, 255, 0.12);
+}
+
+/* Multi-pane mode: Subtle pane-accent-tinted header */
+.terminal-pane-header[data-multi-pane="true"] {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.terminal-pane-header[data-multi-pane="true"][data-accent="blue"] {
+  background: rgba(96, 165, 250, 0.12);
+  border-bottom-color: rgba(96, 165, 250, 0.25);
+}
+.terminal-pane-header[data-multi-pane="true"][data-accent="blue"][data-active="true"] {
+  background: rgba(96, 165, 250, 0.22);
+  border-bottom-color: rgba(96, 165, 250, 0.45);
+}
+
+.terminal-pane-header[data-multi-pane="true"][data-accent="violet"] {
+  background: rgba(167, 139, 250, 0.12);
+  border-bottom-color: rgba(167, 139, 250, 0.25);
+}
+.terminal-pane-header[data-multi-pane="true"][data-accent="violet"][data-active="true"] {
+  background: rgba(167, 139, 250, 0.22);
+  border-bottom-color: rgba(167, 139, 250, 0.45);
+}
+
+.terminal-pane-header[data-multi-pane="true"][data-accent="emerald"] {
+  background: rgba(52, 211, 153, 0.12);
+  border-bottom-color: rgba(52, 211, 153, 0.25);
+}
+.terminal-pane-header[data-multi-pane="true"][data-accent="emerald"][data-active="true"] {
+  background: rgba(52, 211, 153, 0.22);
+  border-bottom-color: rgba(52, 211, 153, 0.45);
+}
+
+.terminal-pane-header[data-multi-pane="true"][data-accent="amber"] {
+  background: rgba(251, 191, 36, 0.12);
+  border-bottom-color: rgba(251, 191, 36, 0.25);
+}
+.terminal-pane-header[data-multi-pane="true"][data-accent="amber"][data-active="true"] {
+  background: rgba(251, 191, 36, 0.22);
+  border-bottom-color: rgba(251, 191, 36, 0.45);
+}
+
+.terminal-pane-header[data-multi-pane="true"][data-accent="cyan"] {
+  background: rgba(34, 211, 238, 0.12);
+  border-bottom-color: rgba(34, 211, 238, 0.25);
+}
+.terminal-pane-header[data-multi-pane="true"][data-accent="cyan"][data-active="true"] {
+  background: rgba(34, 211, 238, 0.22);
+  border-bottom-color: rgba(34, 211, 238, 0.45);
+}
+
+.terminal-pane-header[data-multi-pane="true"][data-accent="rose"] {
+  background: rgba(251, 113, 133, 0.12);
+  border-bottom-color: rgba(251, 113, 133, 0.25);
+}
+.terminal-pane-header[data-multi-pane="true"][data-accent="rose"][data-active="true"] {
+  background: rgba(251, 113, 133, 0.22);
+  border-bottom-color: rgba(251, 113, 133, 0.45);
+}
+
+.terminal-pane-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: center;
+  font-size: 11px;
+  line-height: 1.2;
+  font-weight: 500;
+  color: var(--muted, #8b9bb8);
+  letter-spacing: 0.01em;
+  padding: 0 4px;
+  cursor: default;
+}
+
+.terminal-pane-header[data-active="true"] .terminal-pane-title {
+  color: #e2e8f0;
+  font-weight: 600;
+}
+
+.terminal-pane-title--editing {
+  overflow: visible;
+  padding: 0;
+}
+
+.terminal-pane-rename-input {
+  width: 100%;
+  height: 19px;
+  padding: 0 4px;
+  border: 1px solid var(--accent, #7c8cff);
+  border-radius: 3px;
+  background: #03060a;
+  color: #ffffff;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.2;
+  outline: none;
+  box-shadow: 0 0 0 1px rgba(124, 140, 255, 0.35);
+  text-align: center;
+  box-sizing: border-box;
+}
+
+.terminal-pane-rename-input:focus {
+  border-color: var(--accent, #7c8cff);
+  box-shadow: 0 0 0 2px rgba(124, 140, 255, 0.5);
+}
+
+/* Unified Canonical Close Button for Pane Chrome */
+.terminal-pane-close-button,
+.chrome-close-button--pane {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: none;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--close-button-fg, var(--dim, #64748b));
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+  outline: none;
+  transition: background-color 150ms ease, color 150ms ease;
+  box-sizing: border-box;
+}
+
+.terminal-pane-close-button:hover:not(:disabled),
+.chrome-close-button--pane:hover:not(:disabled) {
+  background: var(--close-button-hover-bg, rgba(239, 68, 68, 0.2));
+  color: var(--close-button-hover-fg, #fca5a5);
+}
+
+.terminal-pane-close-button:active:not(:disabled),
+.chrome-close-button--pane:active:not(:disabled) {
+  background: var(--close-button-active-bg, rgba(239, 68, 68, 0.3));
+  color: var(--close-button-active-fg, #ffffff);
+}
+
+.terminal-pane-close-button:focus-visible,
+.chrome-close-button--pane:focus-visible {
+  outline: 2px solid var(--accent, #7c8cff);
+  outline-offset: 1px;
+}
+
+/* Spacer for pane header when close button is hidden on final remaining pane */
+.terminal-pane-header-spacer {
+  display: inline-block;
+  width: 18px;
+  height: 18px;
+  pointer-events: none;
+  visibility: hidden;
+}
+
+.terminal-pane-actions-container {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.terminal-pane-actions-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--dim, #64748b);
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+  outline: none;
+  transition: background-color 120ms ease, color 120ms ease;
+  box-sizing: border-box;
+}
+
+.terminal-pane-actions-button:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #ffffff;
+}
+
+.terminal-pane-actions-button:focus-visible {
+  outline: 2px solid var(--accent, #7c8cff);
+  outline-offset: 1px;
+}
+
+.terminal-pane-header[data-active="true"] .terminal-pane-actions-button {
+  color: var(--muted, #8b9bb8);
+}
+
+.terminal-pane-actions-menu {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 2px;
+  min-width: 110px;
+  background: #0d1422;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+  padding: 4px;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.terminal-pane-menu-item {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  padding: 4px 8px;
+  font-size: 11px;
+  font-family: inherit;
+  color: var(--text, #e2e8f0);
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  text-align: left;
+  transition: background 120ms ease;
+}
+
+.terminal-pane-menu-item:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.terminal-pane-menu-item--danger:hover {
+  background: rgba(239, 68, 68, 0.16);
+  color: #fca5a5;
+}
+
+.capture-panel-leaf-wrapper {
+  flex: 1 1 0%;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  overflow: hidden;
+}
+
+/* Terminal Tab Content Shell & Toast Region */
+.terminal-tab-content-shell {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  background: var(--terminal-surface);
+}
+
+/* Terminal Workspace Body as Right-Docked Side Panel Layout */
+.terminal-workspace-body {
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  flex: 1 1 0%;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  position: relative;
+}
+
+.terminal-workspace-body[data-capture-open="false"] .terminal-main-region {
+  flex: 1 1 100%;
+  width: 100%;
+}
+
+.terminal-main-region {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+  display: flex;
+  position: relative;
+}
+
+.capture-resizer {
+  flex: 0 0 auto;
+  width: 1px;
+  cursor: col-resize;
+  position: relative;
+  background: var(--divider-muted, #19253a);
+  transition: background-color 150ms ease;
+  z-index: 10;
+  outline: none;
+  user-select: none;
+}
+
+.capture-resizer::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -4px;
+  right: -4px;
+}
+
+.capture-resizer:hover {
+  background: var(--divider-hover, #334466);
+}
+
+.capture-resizer:focus-visible {
+  background: var(--divider-hover, #334466);
+  outline: 1px solid var(--accent, #7c8cff);
+  outline-offset: 1px;
+}
+
+.capture-resizer[data-dragging="true"] {
+  background: var(--accent, #7c8cff);
+}
+
+.capture-side-panel {
+  flex: 0 0 var(--capture-panel-width, 400px);
+  width: var(--capture-panel-width, 400px);
+  min-width: 260px;
+  max-width: min(85vw, calc(100% - 200px), 1200px);
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  background: var(--panel, #0d1422);
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  flex-shrink: 0;
+  position: relative;
+}
+
+.capture-side-panel .context-panel {
+  width: 100%;
+  height: 100%;
+  padding: 6px 8px 8px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  overflow-x: hidden;
+  position: relative;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
+}
+
+
+.terminal-pane-toast-region {
+  position: absolute;
+  z-index: var(--z-toast, 50);
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: min(560px, calc(100% - 32px));
+  pointer-events: none;
+}
+
+.terminal-pane-toast {
+  pointer-events: none;
+}
+
+.capture-target-pill[data-accent="blue"] .capture-target-dot,
+.capture-target-dot.accent-blue { background-color: #60a5fa; }
+.capture-target-pill[data-accent="violet"] .capture-target-dot,
+.capture-target-dot.accent-violet { background-color: #a78bfa; }
+.capture-target-pill[data-accent="emerald"] .capture-target-dot,
+.capture-target-dot.accent-emerald { background-color: #34d399; }
+.capture-target-pill[data-accent="amber"] .capture-target-dot,
+.capture-target-dot.accent-amber { background-color: #fbbf24; }
+.capture-target-pill[data-accent="cyan"] .capture-target-dot,
+.capture-target-dot.accent-cyan { background-color: #22d3ee; }
+.capture-target-pill[data-accent="rose"] .capture-target-dot,
+.capture-target-dot.accent-rose { background-color: #fb7185; }
+
+.transcript-source-indicator[data-accent="blue"] { background-color: #60a5fa; }
+.transcript-source-indicator[data-accent="violet"] { background-color: #a78bfa; }
+.transcript-source-indicator[data-accent="emerald"] { background-color: #34d399; }
+.transcript-source-indicator[data-accent="amber"] { background-color: #fbbf24; }
+.transcript-source-indicator[data-accent="cyan"] { background-color: #22d3ee; }
+.transcript-source-indicator[data-accent="rose"] { background-color: #fb7185; }

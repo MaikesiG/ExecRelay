@@ -1,0 +1,35 @@
+{
+  "name": "app",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "lint": "eslint --no-color .",
+    "test": "node ../tests/brandRenameAndPersistenceMigration.test.mjs && node ../tests/captureBlockDensityAndSemanticsPolish.test.mjs && node ../tests/captureCopyFeedbackBanner.test.mjs && node ../tests/captureHeaderAndMonitorTabPolish.test.mjs && node ../tests/captureHeaderSpacingRhythmAndActionSizeTune003.test.mjs && node ../tests/capturePanelCompactDensityPass002.test.mjs && node ../tests/captureSessionInfoCollapse.test.mjs && node ../tests/closeCapturedPane.test.mjs && node ../tests/compactChromeAndRename.test.mjs && node ../tests/customVerificationProfilesAndSelectiveRuns.test.mjs && node ../tests/destructiveConfirmationDialogUX.test.mjs && node ../tests/emptyVerificationDefaultsAndExpandControl.test.mjs && node ../tests/evidenceCollectorsFoundation.test.mjs && node ../tests/evidenceSwitcherScrollAndVerificationCancelRegression.test.mjs && node ../tests/executionChangeAttribution.test.mjs && node ../tests/executionEvidenceFoundation.test.mjs && node ../tests/floatingMonitorFeedback.test.mjs && node ../tests/fullWidthTabTopAccent.test.mjs && node ../tests/globalMonitorFooter.test.mjs && node ../tests/itermTabStripOverflow.test.mjs && node ../tests/keyboardShortcutNavigation.test.mjs && node ../tests/monitorFooterEvidenceCopy.test.mjs && node ../tests/monitorSurfaceConsolidation.test.mjs && node ../tests/multiPaneCapture.test.mjs && node ../tests/outputFastPathAndStreamingBoundary.test.mjs && node ../tests/paneHeaderChrome.test.mjs && node ../tests/panelLayoutTree.test.mjs && node ../tests/releaseBlockerHistory024.test.mjs && node ../tests/removeClearTranscriptAndSelectionDelete.test.mjs && node ../tests/repositoryEvidenceCopy.test.mjs && node ../tests/repositoryFileStatusPresentation.test.mjs && node ../tests/rightDockedCaptureSidepanel.test.mjs && node ../tests/sharedMonitorFeedback.test.mjs && node ../tests/shellIntegrationTrustBoundary.test.mjs && node ../tests/simplifyCaptureRow2SelectionUI.test.mjs && node ../tests/splitDuplicatePromptHarden003.test.mjs && node ../tests/splitPaneAndInlineDestructiveBanner.test.mjs && node ../tests/splitPaneAndUnifiedCaptureBanners.test.mjs && node ../tests/structuredCaptureBlockTypes.test.mjs && node ../tests/structuredEngineeringEvidence.test.mjs && node ../tests/tabEdgeGapAlignmentAndRedOutlinedHover005.test.mjs && node ../tests/tabGapAndDestructiveIconSemantics004.test.mjs && node ../tests/terminalCursorPolish.test.mjs && node ../tests/terminalSplitStatePreservation.test.mjs && node ../tests/terminalViewportClearBehavior.test.mjs && node ../tests/terminalViewportScrollbarStyling.test.mjs && node ../tests/transcriptDisplayCleanup.test.mjs && node ../tests/uniformControlHeightAndButtonAlignment.test.mjs && node ../tests/unifyTabAndCloseButtonStyling.test.mjs && node ../tests/untrackedFileLineStats.test.mjs && node ../tests/verificationCriterionDeletion.test.mjs && node ../tests/verificationEvidenceAttributionSemantics.test.mjs && node ../tests/verificationLayerFoundation.test.mjs && node ../tests/verificationLifecycleReconciliation.test.mjs && node ../tests/verificationProfileEditabilityAfterRun.test.mjs && node ../tests/verificationProfileUXCleanup.test.mjs && node ../tests/verifyCompactEyeButton029.test.mjs && node ../tests/verifyCompactStatusAndBaselineToggle028.test.mjs && node ../tests/verifyCwdCasing027.test.mjs && node ../tests/verifyCwdMonorepo025.test.mjs && node ../tests/verifyFinalCriterionCardLayout030.test.mjs && node ../tests/verifyPreDispatchOrder026.test.mjs && node ../tests/warningIsolation.test.mjs && node ../tests/workspaceAndChangesHeaderCleanup.test.mjs && node ../tests/workspaceContextBinding.test.mjs && node ../tests/workspacePersistence.test.mjs",
+    "typecheck": "tsc -b",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2.11.1",
+    "@xterm/addon-fit": "^0.10.0",
+    "@xterm/xterm": "^5.5.0",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^24.13.3",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.7",
+    "@vitejs/plugin-react": "^6.1.1",
+    "eslint": "^10.10.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "eslint-plugin-react-refresh": "^0.5.6",
+    "globals": "^17.12.0",
+    "typescript": "~6.0.2",
+    "typescript-eslint": "^8.69.0",
+    "vite": "^8.3.0"
+  }
+}

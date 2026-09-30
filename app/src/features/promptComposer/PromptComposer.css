@@ -1,0 +1,230 @@
+/**
+ * Prompt Composer Stylesheet
+ *
+ * Dark compact desktop utility dialog for assembling AI-ready prompt context.
+ */
+
+.prompt-composer-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: rgba(0, 0, 0, 0.65);
+  backdrop-filter: blur(2px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  box-sizing: border-box;
+}
+
+.prompt-composer-dialog {
+  width: 100%;
+  max-width: 640px;
+  max-height: 85vh;
+  background: #0d1422;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.05);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  color: #e2e8f0;
+  font-family: inherit;
+  font-size: 12px;
+}
+
+.prompt-composer-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.prompt-composer-title-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.prompt-composer-icon {
+  font-size: 14px;
+}
+
+.prompt-composer-title {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: #f8fafc;
+  letter-spacing: -0.01em;
+}
+
+.prompt-composer-close-btn {
+  font-size: 16px;
+  color: #94a3b8;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+  transition: all 120ms ease;
+}
+
+.prompt-composer-close-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #f8fafc;
+}
+
+.prompt-composer-body {
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  overflow-y: auto;
+  max-height: calc(85vh - 110px);
+}
+
+.prompt-composer-label {
+  font-size: 10.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #94a3b8;
+  display: block;
+  margin-bottom: 4px;
+}
+
+.prompt-composer-context-card {
+  padding: 8px 10px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.prompt-composer-summary-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.prompt-composer-badge {
+  font-size: 11px;
+  font-weight: 600;
+  color: #60a5fa;
+  background: rgba(59, 130, 246, 0.15);
+  border: 1px solid rgba(59, 130, 246, 0.3);
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.prompt-composer-summary-text {
+  font-size: 11.5px;
+  color: #cbd5e1;
+}
+
+.prompt-composer-section {
+  display: flex;
+  flex-direction: column;
+}
+
+.prompt-composer-textarea {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px 10px;
+  background: #070c14;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  color: #f1f5f9;
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 1.4;
+  resize: vertical;
+  min-height: 60px;
+  transition: border-color 150ms ease;
+}
+
+.prompt-composer-textarea:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 1px #3b82f6;
+}
+
+.prompt-composer-preview-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+
+.prompt-composer-preview-hint {
+  font-size: 10px;
+  color: #64748b;
+  font-style: italic;
+}
+
+.prompt-composer-preview-box {
+  margin: 0;
+  padding: 10px 12px;
+  background: #05080f;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  max-height: 220px;
+  overflow-y: auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 11px;
+  line-height: 1.45;
+  color: #cbd5e1;
+  white-space: pre-wrap;
+  word-break: break-word;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
+}
+
+.prompt-composer-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.02);
+  gap: 8px;
+}
+
+.prompt-composer-footer-left,
+.prompt-composer-footer-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.prompt-composer-ai-btn {
+  opacity: 0.5;
+  cursor: not-allowed;
+  font-size: 11px;
+  border-style: dashed;
+}
+
+.prompt-composer-cancel-btn {
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #94a3b8;
+}
+
+.prompt-composer-cancel-btn:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: #f1f5f9;
+}
+
+.prompt-composer-copy-btn {
+  min-width: 100px;
+}

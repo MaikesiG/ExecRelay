@@ -1,0 +1,114 @@
+/**
+ * CaptureWarningBanner styles
+ *
+ * Pane-local notification banner constrained to the owning pane.
+ * Avoids adding card-like pane headers or borders to the pane.
+ */
+
+.capture-warning-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 6px 10px;
+  font-size: 11px;
+  line-height: 1.35;
+  gap: 8px;
+  box-sizing: border-box;
+  flex-shrink: 0;
+  z-index: 5;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.capture-warning-banner--warning {
+  background: rgba(245, 158, 11, 0.12);
+  color: #fbbf24;
+  border-left: 2px solid #f59e0b;
+}
+
+.capture-warning-banner--error {
+  background: rgba(239, 68, 68, 0.15);
+  color: #fca5a5;
+  border-left: 2px solid #ef4444;
+}
+
+.capture-warning-banner-main {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+}
+
+.capture-warning-banner-icon {
+  font-size: 12px;
+  font-weight: 700;
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+.capture-warning-banner-body {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.capture-warning-banner-title {
+  font-weight: 600;
+  color: #ffffff;
+}
+
+.capture-warning-banner-message {
+  opacity: 0.95;
+}
+
+.capture-warning-banner-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.capture-warning-banner-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 20px;
+  padding: 0 8px;
+  font-size: 11px;
+  font-weight: 500;
+  border-radius: 3px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.06);
+  color: #e2e8f0;
+  cursor: pointer;
+  outline: none;
+  transition: all 120ms ease;
+  white-space: nowrap;
+}
+
+.capture-warning-banner-btn:hover {
+  background: rgba(255, 255, 255, 0.15);
+  color: #ffffff;
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+.capture-warning-banner-btn:focus-visible {
+  outline: 2px solid var(--accent, #7c8cff);
+  outline-offset: 1px;
+}
+
+.capture-warning-banner-btn--retry {
+  background: rgba(124, 140, 255, 0.15);
+  border-color: rgba(124, 140, 255, 0.4);
+  color: #c7d2fe;
+}
+
+.capture-warning-banner-btn--retry:hover {
+  background: rgba(124, 140, 255, 0.25);
+  border-color: var(--accent, #7c8cff);
+  color: #ffffff;
+}
