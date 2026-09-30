@@ -4,7 +4,7 @@
 
 ExecRelay is a vendor-neutral execution harness for developers and AI agents. It runs, observes, verifies, and records what developers and AI agents actually execute. Combining a real terminal with structured execution capture, repository change tracking, and explicit verification, ExecRelay establishes honest ground truth for engineering workflows.
 
-[Download](https://maikesig.github.io/traceRelay/download.html) &bull; [Releases](https://github.com/MaikesiG/traceRelay/releases) &bull; [Issues](https://github.com/MaikesiG/traceRelay/issues)
+[Download](https://maikesig.github.io/ExecRelay/download.html) &bull; [Releases](https://github.com/MaikesiG/ExecRelay/releases) &bull; [Issues](https://github.com/MaikesiG/ExecRelay/issues)
 
 ---
 
@@ -59,8 +59,8 @@ ExecRelay Terminal v0.1 is built local-first:
 
 ExecRelay Terminal v0.1 currently targets macOS.
 
-- **Public Download Page:** [Download Page](https://maikesig.github.io/traceRelay/download.html)
-- **GitHub Releases:** [Releases](https://github.com/MaikesiG/traceRelay/releases)
+- **Public Download Page:** [Download Page](https://maikesig.github.io/ExecRelay/download.html)
+- **GitHub Releases:** [Releases](https://github.com/MaikesiG/ExecRelay/releases)
 
 The v0.1.0 release artifact is being prepared. Pre-release testing targets macOS (Apple Silicon arm64). Packaged DMG artifacts and notarization details will be published directly to GitHub Releases upon completion.
 
