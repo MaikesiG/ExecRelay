@@ -53,6 +53,7 @@ pub struct TerminalSessionInfo {
     pub exit_code: Option<i32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub integration_nonce: Option<String>,
+    pub shell_integration_available: bool,
 }
 
 /* ========================================================================== */
@@ -228,12 +229,14 @@ mod tests {
             rows: 24,
             exit_code: None,
             integration_nonce: None,
+            shell_integration_available: true,
         };
 
         let json = serde_json::to_string(&info).unwrap();
         assert!(json.contains("\"sessionId\":\"test-session-123\""));
         assert!(json.contains("\"shellKind\":\"zsh\""));
         assert!(json.contains("\"status\":\"running\""));
+        assert!(json.contains("\"shellIntegrationAvailable\":true"));
         assert!(!json.contains("session_id"));
         assert!(!json.contains("shell_kind"));
     }

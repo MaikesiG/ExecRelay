@@ -6,7 +6,7 @@
  * ARCHITECTURAL INVARIANTS:
  * 1. ResolvedEvidenceItem is export/presentation data, NOT new canonical truth.
  * 2. Never mutates or replaces canonical Execution, EvidenceBlock, VerificationRun,
- *    RepositorySnapshot, AgentRun, PolicyDecision, or UsageEvent records.
+ *    RepositorySnapshot, AgentRun, or UsageEvent records.
  * 3. Bounded reads: all raw strings/diffs adhere to MAX_ITEM_CHARS and MAX_TOTAL_COPY_CHARS.
  * 4. Honest representation: unresolvable or missing items are explicitly reported as unavailable.
  * 5. Secret safety: cryptographic nonces, tokens, and credentials are never exported.
@@ -16,31 +16,15 @@ import type { StructuredEngineeringEvidence } from '../structuredEvidence/types'
 import type { TranscriptBlock } from '../transcript/types';
 import type { RepositorySnapshot } from '../evidenceCollectors/types';
 import type { VerificationContract, VerificationRun } from '../verification/types';
-export interface AgentRun {
-  id: string;
-  agentId?: string;
-  displayName?: string;
-  providerName?: string;
-  taskText?: string;
-  status?: string;
-  lifecycle?: string;
-  outcome?: string;
-  workspaceId?: string;
-  startedAt?: number;
-  completedAt?: number | null;
-  executionIds?: string[];
-  verificationRunIds?: string[];
-  [key: string]: unknown;
-}
-export interface AgentEvent {
-  id: string;
-  agentRunId: string;
-  type: string;
-  payload?: Record<string, unknown>;
-  createdAt?: number;
-  [key: string]: unknown;
-}
 import type { ChangeAttribution } from '../attribution/types';
+
+export interface ResolvableAgentEvent {
+  id: string;
+  type: string;
+  source: string;
+  createdAt: number;
+  payload: unknown;
+}
 
 export interface ResolvedExecutionEvidence {
   kind: 'execution';
@@ -135,32 +119,6 @@ export interface ResolvedAgentEventEvidence {
   timestamp?: number;
   linkedExecutionId?: string;
   linkedExecution?: ResolvedExecutionEvidence;
-  policyDecision?: string;
-  selectedAt?: number;
-}
-
-export interface ResolvedPolicyEvidence {
-  kind: 'policy';
-  id: string; // selection composite key
-  subkind: 'decision' | 'approval' | 'audit';
-  actionRequestId?: string;
-  effect?: 'allow' | 'require-approval' | 'deny';
-  status?: string;
-  governanceCoverage?: string;
-  command?: string;
-  filePath?: string;
-  toolName?: string;
-  reason?: string;
-  requesterType?: string;
-  agentRunId?: string;
-  shellType?: string;
-  warningCodes?: string[];
-  resolvedByActorId?: string;
-  comment?: string;
-  decision?: string;
-  approvalStatus?: string;
-  timestamp?: number;
-  requestFingerprint?: string;
   selectedAt?: number;
 }
 
@@ -218,7 +176,6 @@ export type ResolvedEvidenceItem =
   | ResolvedRepositoryChangeEvidence
   | ResolvedVerificationEvidence
   | ResolvedAgentEventEvidence
-  | ResolvedPolicyEvidence
   | ResolvedStructuredEvidence
   | ResolvedUsageEvidence
   | ResolvedAttributionEvidence
@@ -241,10 +198,8 @@ export interface EvidenceResolutionContext {
   latestVerificationRun?: VerificationRun | null;
   historicalVerificationRuns?: VerificationRun[];
   changeAttributions?: ChangeAttribution[];
-  agentRuns?: AgentRun[];
-  activeAgentRun?: AgentRun | null;
   agentEventIngress?: {
-    getEventsForRun: (runId: string) => AgentEvent[];
+    getEventsForRun: (runId: string) => ResolvableAgentEvent[];
   };
   maxPerItemChars?: number;
   maxAggregateChars?: number;

@@ -1,19 +1,20 @@
 /**
  * Centralized Shortcut Reservation and Validation Logic
- * HARDEN-009
+ * SHORTCUT-002: Cross-Platform Safety Policies & Dynamic Conflict Resolution
  */
 
 import type {
   AppCommand,
   ShortcutBinding,
+  ShortcutPlatform,
   ShortcutValidationResult,
 } from './types';
 import {
+  ALL_CONFIGURABLE_COMMANDS,
   APP_COMMAND_METADATA,
-  ORDERED_APP_COMMANDS,
 } from './types';
 import {
-  isMacPlatform,
+  detectPlatform,
   normalizeKey,
   areBindingsEqual,
   formatShortcutDisplay,
@@ -41,10 +42,11 @@ const TERMINAL_RESERVED_CTRL_KEYS = new Set([
 // Standard text editing shortcuts (cut, copy, paste, select all, undo, redo)
 const TEXT_EDIT_KEYS = new Set(['c', 'v', 'x', 'a', 'z', 'y']);
 
-// OS / application reserved keys on macOS
+// OS / application reserved keys on macOS (unshifted single-modifier Command chords)
 const MAC_OS_RESERVED_KEYS = new Set(['q', 'h', 'm', 'w', 'tab', 'space', ',']);
 
 export interface ShortcutValidationContext {
+  platform?: ShortcutPlatform;
   isMac?: boolean;
   targetCommand?: AppCommand;
   existingBindings?: Partial<Record<AppCommand, ShortcutBinding>>;
@@ -53,17 +55,24 @@ export interface ShortcutValidationContext {
 /**
  * Validates a candidate shortcut binding against all safety policies:
  * 1. Bare keys and Shift-only keys are strictly forbidden.
- * 2. Terminal control keys (Ctrl+C, Ctrl+D, etc.) are protected.
+ * 2. Terminal control keys (Ctrl+C, Ctrl+D, etc.) are protected on all platforms.
  * 3. Standard text editing keys (Cmd/Ctrl+C, V, X, A, Z) are protected.
  * 4. OS and app-level reserved shortcuts are protected.
  * 5. Escape and safety cancellation keys are protected.
- * 6. Duplicate assignments to other commands are detected.
+ * 6. Duplicate assignments to other commands on the current platform are detected.
  */
 export function validateShortcutBinding(
   binding: ShortcutBinding,
   context: ShortcutValidationContext = {},
 ): ShortcutValidationResult {
-  const isMac = context.isMac ?? isMacPlatform();
+  const platform =
+    context.platform ??
+    (typeof context.isMac === 'boolean'
+      ? context.isMac
+        ? 'macos'
+        : 'windows'
+      : detectPlatform());
+  const isMac = platform === 'macos';
   const key = normalizeKey(binding.key);
 
   if (!key) {
@@ -74,7 +83,7 @@ export function validateShortcutBinding(
     };
   }
 
-  // 1. Escape key safety: Escape cannot be used as a navigation shortcut
+  // 1. Escape key safety: Escape cannot be used as a shortcut
   if (key === 'escape') {
     return {
       allowed: false,
@@ -126,31 +135,81 @@ export function validateShortcutBinding(
     return {
       allowed: false,
       reason: 'text-editing',
-      message: `${formatShortcutDisplay(binding, isMac)} is reserved for standard text editing.`,
+      message: `${formatShortcutDisplay(binding, platform)} is reserved for standard text editing.`,
     };
   }
   if (!isMac && hasCtrl && !hasMeta && !hasAlt && TEXT_EDIT_KEYS.has(key)) {
     return {
       allowed: false,
       reason: 'text-editing',
-      message: `${formatShortcutDisplay(binding, isMac)} is reserved for standard text editing.`,
+      message: `${formatShortcutDisplay(binding, platform)} is reserved for standard text editing.`,
     };
   }
 
   // 5. OS / App-reserved shortcuts:
-  // macOS: Cmd + [Q, H, M, W, Tab, Space, ,]
+  // macOS: Cmd + [Q, H, M, W, Tab, Space, ,] (unshifted Cmd+W closes window)
   if (isMac && hasMeta && !hasCtrl && !hasAlt && !hasShift && MAC_OS_RESERVED_KEYS.has(key)) {
     return {
       allowed: false,
       reason: 'os-reserved',
-      message: `${formatShortcutDisplay(binding, isMac)} is reserved by the operating system.`,
+      message: `${formatShortcutDisplay(binding, platform)} is reserved by the operating system.`,
     };
   }
 
-  // 6. Duplicate conflict check:
-  // Does another AppCommand already use this exact shortcut?
+  // 6. Default Terminal pane shortcuts protected when standalone/no existingBindings provided:
+  if (!context.existingBindings) {
+    if (isMac && hasMeta && !hasCtrl && !hasAlt) {
+      if (!hasShift && key === 'd' && context.targetCommand !== 'terminal.split-right') {
+        return {
+          allowed: false,
+          reason: 'app-safety',
+          message: 'Cmd+D is reserved for Split Right.',
+        };
+      }
+      if (hasShift && key === 'd' && context.targetCommand !== 'terminal.split-down') {
+        return {
+          allowed: false,
+          reason: 'app-safety',
+          message: 'Cmd+Shift+D is reserved for Split Down.',
+        };
+      }
+      if (hasShift && key === 'w' && context.targetCommand !== 'terminal.close-pane') {
+        return {
+          allowed: false,
+          reason: 'app-safety',
+          message: 'Cmd+Shift+W is reserved for Close Active Pane.',
+        };
+      }
+    }
+    if (!isMac && hasCtrl && !hasMeta && !hasAlt && hasShift) {
+      if ((key === '\\' || key === '|') && context.targetCommand !== 'terminal.split-right') {
+        return {
+          allowed: false,
+          reason: 'app-safety',
+          message: 'Ctrl+Shift+\\ is reserved for Split Right.',
+        };
+      }
+      if ((key === '-' || key === '_') && context.targetCommand !== 'terminal.split-down') {
+        return {
+          allowed: false,
+          reason: 'app-safety',
+          message: 'Ctrl+Shift+- is reserved for Split Down.',
+        };
+      }
+      if (key === 'w' && context.targetCommand !== 'terminal.close-pane') {
+        return {
+          allowed: false,
+          reason: 'app-safety',
+          message: 'Ctrl+Shift+W is reserved for Close Active Pane.',
+        };
+      }
+    }
+  }
+
+  // 7. Duplicate conflict check:
+  // Does another AppCommand already use this exact shortcut on the current platform?
   if (context.existingBindings) {
-    for (const cmd of ORDERED_APP_COMMANDS) {
+    for (const cmd of ALL_CONFIGURABLE_COMMANDS) {
       if (context.targetCommand && cmd === context.targetCommand) {
         continue;
       }

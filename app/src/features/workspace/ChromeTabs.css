@@ -119,6 +119,9 @@
   flex-shrink: 0;
   box-sizing: border-box;
   font-size: 12px;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-user-drag: none;
 }
 
 .chrome-tab:hover {
@@ -149,13 +152,38 @@
 /* Terminal tab variant */
 .chrome-tab--terminal {
   max-width: 220px;
+  border-color: var(
+    --terminal-tab-identity-color,
+    var(--terminal-tab-accent)
+  );
+}
+
+/* Inactive terminal tab: subtler, lighter alpha-mixed identity border */
+.chrome-tab--terminal:not(.chrome-tab--active):not([data-active="true"]) {
+  border-color: color-mix(
+    in srgb,
+    var(--terminal-tab-identity-color, var(--terminal-tab-accent)) 35%,
+    transparent
+  );
+}
+
+/* Inactive terminal tab hover: intermediate identity strength between inactive and active */
+.chrome-tab--terminal:hover:not(.chrome-tab--active):not([data-active="true"]) {
+  border-color: color-mix(
+    in srgb,
+    var(--terminal-tab-identity-color, var(--terminal-tab-accent)) 65%,
+    transparent
+  );
 }
 
 .chrome-tab--terminal.chrome-tab--active,
 .chrome-tab--terminal[data-active="true"],
 .terminal-tab--active,
 .workspace-tab--active {
-  border-color: rgba(52, 211, 153, 0.35);
+  border-color: var(
+    --terminal-tab-identity-color,
+    var(--terminal-tab-accent)
+  );
   background: rgba(255, 255, 255, 0.08);
   color: #ffffff;
   font-weight: 600;
@@ -203,7 +231,10 @@
 .chrome-tab--terminal:hover:not(.chrome-tab--active):not([data-active="true"])::before,
 .terminal-tab:hover:not(.terminal-tab--active):not([data-active="true"])::before,
 .workspace-tab:hover:not(.workspace-tab--active):not([data-active="true"])::before {
-  background: rgba(52, 211, 153, 0.25);
+  background: var(
+    --terminal-tab-identity-color,
+    var(--terminal-tab-accent)
+  );
   opacity: 0.5;
 }
 
@@ -220,7 +251,10 @@
 .terminal-tab[data-active="true"]::before,
 .workspace-tab--active::before,
 .workspace-tab[data-active="true"]::before {
-  background: var(--terminal-tab-accent);
+  background: var(
+    --terminal-tab-identity-color,
+    var(--terminal-tab-accent)
+  );
 }
 
 /* Unified Canonical Close Button ("x") */
@@ -311,4 +345,42 @@
   height: 18px;
   pointer-events: none;
   visibility: hidden;
+}
+
+/* Canonical Workspace Tab Capture Status Indicator */
+.workspace-tab-status-dot,
+.workspace-tab-capture-status {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  min-width: 7px;
+  min-height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  pointer-events: none;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
+}
+
+.workspace-tab-status-dot--ready,
+.workspace-tab-status-dot--idle,
+.workspace-tab-capture-status--ready,
+.workspace-tab-capture-status--idle {
+  background: var(--green, #34d399);
+}
+
+.workspace-tab-status-dot--capturing,
+.workspace-tab-status-dot--listening,
+.workspace-tab-capture-status--capturing,
+.workspace-tab-capture-status--listening {
+  background: var(--red, #f87171);
+}
+
+.workspace-tab-status-dot--paused,
+.workspace-tab-capture-status--paused {
+  background: #f59e0b;
+}
+
+.workspace-tab-status-dot--error,
+.workspace-tab-capture-status--error {
+  background: var(--red, #f87171);
 }

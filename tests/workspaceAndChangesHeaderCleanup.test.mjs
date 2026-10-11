@@ -114,10 +114,10 @@ console.log('--- Test 1: Window Title Resolution ---');
   const boundWs = {
     id: 'ws-1',
     name: 'careerneed',
-    rootPath: '/Users/xingchiguo/development/projects/careerneed',
+    rootPath: '/Users/example/development/projects/careerneed',
     repository: {
       vcs: 'git',
-      rootPath: '/Users/xingchiguo/development/projects/careerneed',
+      rootPath: '/Users/example/development/projects/careerneed',
       branch: 'main',
     },
   };
@@ -371,10 +371,10 @@ console.log('\\n--- Test 4: Open in Finder Action Verification ---');
     openedPath = p;
   });
 
-  await wsContextMod.openInFinder('/Users/xingchiguo/development/projects/careerneed');
+  await wsContextMod.openInFinder('/Users/example/development/projects/careerneed');
   assert.strictEqual(
     openedPath,
-    '/Users/xingchiguo/development/projects/careerneed',
+    '/Users/example/development/projects/careerneed',
     'openInFinder must be invoked with the exact repository path',
   );
 
@@ -394,8 +394,8 @@ console.log('\\n--- Test 4: Open in Finder Action Verification ---');
 // ============================================================================
 console.log('\\n--- Test 5: Terminal CWD Independence from Header Metadata ---');
 {
-  const workspaceRoot = '/Users/xingchiguo/development/projects/careerneed';
-  const repositoryRoot = '/Users/xingchiguo/development/projects/careerneed';
+  const workspaceRoot = '/Users/example/development/projects/careerneed';
+  const repositoryRoot = '/Users/example/development/projects/careerneed';
 
   const ws = {
     id: 'ws-careerneed',
@@ -435,10 +435,10 @@ console.log('\\n--- Test 6: Switching Workspace Updates Title & Repository State
   const ws1 = {
     id: 'ws-1',
     name: 'traceRelay',
-    rootPath: '/Users/xingchiguo/development/projects/traceRelay',
+    rootPath: '/Users/example/development/projects/traceRelay',
     repository: {
       vcs: 'git',
-      rootPath: '/Users/xingchiguo/development/projects/traceRelay',
+      rootPath: '/Users/example/development/projects/traceRelay',
       branch: 'main',
     },
   };
@@ -446,10 +446,10 @@ console.log('\\n--- Test 6: Switching Workspace Updates Title & Repository State
   const ws2 = {
     id: 'ws-2',
     name: 'careerneed',
-    rootPath: '/Users/xingchiguo/development/projects/careerneed',
+    rootPath: '/Users/example/development/projects/careerneed',
     repository: {
       vcs: 'git',
-      rootPath: '/Users/xingchiguo/development/projects/careerneed',
+      rootPath: '/Users/example/development/projects/careerneed',
       branch: 'feature/auth',
     },
   };
@@ -457,12 +457,12 @@ console.log('\\n--- Test 6: Switching Workspace Updates Title & Repository State
   // Workspace 1 active
   assert.strictEqual(wsContextMod.resolveWindowTitle(ws1), 'traceRelay — ExecRelay');
   assert.strictEqual(ws1.repository.branch, 'main');
-  assert.strictEqual(ws1.repository.rootPath, '/Users/xingchiguo/development/projects/traceRelay');
+  assert.strictEqual(ws1.repository.rootPath, '/Users/example/development/projects/traceRelay');
 
   // Switch to Workspace 2
   assert.strictEqual(wsContextMod.resolveWindowTitle(ws2), 'careerneed — ExecRelay');
   assert.strictEqual(ws2.repository.branch, 'feature/auth');
-  assert.strictEqual(ws2.repository.rootPath, '/Users/xingchiguo/development/projects/careerneed');
+  assert.strictEqual(ws2.repository.rootPath, '/Users/example/development/projects/careerneed');
 
   console.log('✓ Switching workspaces updates title, branch, and repository root independently');
 }

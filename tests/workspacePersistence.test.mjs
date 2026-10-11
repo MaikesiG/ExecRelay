@@ -22,6 +22,7 @@
  * 18. Workspace close removes it from persisted state
  * 19. New Workspace appears after restart
  * 20. Terminal cd independence remains intact
+ * 21. Removed monitor views normalize to stable defaults
  */
 
 import assert from 'node:assert';
@@ -746,6 +747,33 @@ console.log('\n--- Test 20: Terminal cd independence remains intact ---');
     'Pane lastKnownCwd is restored independently',
   );
   console.log('✓ Terminal cwd change (cd /tmp) strictly preserves Workspace and Repository rootPath independence');
+}
+
+// ============================================================================
+// Test 21: Removed monitor views normalize to stable defaults
+// ============================================================================
+console.log('\n--- Test 21: Removed monitor views normalize to stable defaults ---');
+{
+  const ws = makeTestWorkspace({ id: 'ws-monitor-view', name: 'Stable Monitor' });
+
+  const serialized = wsPersistMod.serializeWorkspaceState(
+    [ws],
+    ws.id,
+    'governance',
+  );
+  assert.strictEqual(
+    serialized.activeMonitorView,
+    undefined,
+    'Serialization must not persist a removed private monitor view',
+  );
+
+  const legacy = wsPersistMod.serializeWorkspaceState([ws], ws.id, 'changes');
+  legacy.activeMonitorView = 'agents';
+  const hydrated = wsPersistMod.deserializeWorkspaceStateWithDiagnostics(legacy);
+  assert.strictEqual(hydrated.state.activeMonitorView, 'capture-evidence');
+  assert.ok(hydrated.diagnostics.includes('normalized-monitor-view'));
+
+  console.log('✓ Removed monitor views normalize to capture-evidence and cannot be re-persisted');
 }
 
 console.log('\n=============================================================');

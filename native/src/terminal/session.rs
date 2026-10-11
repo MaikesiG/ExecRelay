@@ -16,6 +16,7 @@ pub struct TerminalSessionParams {
     pub rows: u16,
     pub cwd: Option<String>,
     pub integration_nonce: Option<String>,
+    pub shell_integration_available: bool,
     pub master: Box<dyn MasterPty + Send>,
     pub writer: Box<dyn Write + Send>,
     pub child: Box<dyn Child + Send + Sync>,
@@ -32,6 +33,7 @@ pub struct TerminalSession {
     pub rows: u16,
     pub exit_code: Option<i32>,
     pub integration_nonce: Option<String>,
+    pub shell_integration_available: bool,
     pub exit_guard: Arc<AtomicBool>,
     master: Arc<Mutex<Box<dyn MasterPty + Send>>>,
     writer: Arc<Mutex<Box<dyn Write + Send>>>,
@@ -51,6 +53,7 @@ impl TerminalSession {
             rows: params.rows,
             exit_code: None,
             integration_nonce: params.integration_nonce,
+            shell_integration_available: params.shell_integration_available,
             exit_guard: Arc::new(AtomicBool::new(false)),
             master: Arc::new(Mutex::new(params.master)),
             writer: Arc::new(Mutex::new(params.writer)),
@@ -70,6 +73,7 @@ impl TerminalSession {
             rows: self.rows,
             exit_code: self.exit_code,
             integration_nonce: self.integration_nonce.clone(),
+            shell_integration_available: self.shell_integration_available,
         }
     }
 

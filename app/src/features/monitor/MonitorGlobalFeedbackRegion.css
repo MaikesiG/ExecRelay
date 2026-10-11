@@ -17,10 +17,12 @@
 }
 
 .monitor-feedback-card {
+  position: relative;
+  overflow: hidden;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 6px 10px;
+  padding: 6px 10px 8px 10px;
   border-radius: 6px;
   font-size: 11px;
   line-height: 1.35;
@@ -133,4 +135,54 @@
 }
 .monitor-feedback-icon--error {
   color: #f85149;
+}
+
+/* Lifetime Countdown / Progress Bar */
+.monitor-feedback-progress-bar {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  height: 2px;
+  width: 100%;
+  transform-origin: left center;
+  animation: feedback-progress-drain var(--feedback-duration, 3000ms) linear forwards;
+  pointer-events: none;
+}
+
+@keyframes feedback-progress-drain {
+  from {
+    transform: scaleX(1);
+  }
+  to {
+    transform: scaleX(0);
+  }
+}
+
+.monitor-feedback-card--success .monitor-feedback-progress-bar {
+  background: var(--green, #3fb950);
+}
+
+.monitor-feedback-card--info .monitor-feedback-progress-bar {
+  background: var(--accent, #58a6ff);
+}
+
+.monitor-feedback-card--warning .monitor-feedback-progress-bar {
+  background: var(--warning, #d29922);
+}
+
+.monitor-feedback-card--error .monitor-feedback-progress-bar {
+  background: var(--red, #f85149);
+}
+
+/* Scoped layout inside Capture floating overlay */
+.capture-floating-feedback-region .monitor-global-feedback-region {
+  position: static;
+  top: auto;
+  left: auto;
+  right: auto;
+  z-index: auto;
+  pointer-events: none;
+  padding: 0;
+  gap: 5px;
+  width: 100%;
 }

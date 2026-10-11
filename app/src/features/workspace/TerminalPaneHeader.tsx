@@ -1,14 +1,12 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import type { TerminalPane } from './types';
 import { getTerminalPaneDisplayTitle } from './types';
-import { useProductCapabilities } from '../edition';
 import './ChromeTabs.css';
 
 export interface TerminalPaneHeaderProps {
   pane: TerminalPane;
   isPaneActive: boolean;
   isMultiPane: boolean;
-  policyStatus?: 'active' | 'off' | 'unsupported';
   onSetActivePane: () => void;
   onClosePane?: () => void;
   onRenamePane?: (customTitle: string | null) => void;
@@ -18,7 +16,6 @@ export function TerminalPaneHeader({
   pane,
   isPaneActive,
   isMultiPane,
-  policyStatus,
   onSetActivePane,
   onClosePane,
   onRenamePane,
@@ -31,8 +28,6 @@ export function TerminalPaneHeader({
   const actionsButtonRef = useRef<HTMLButtonElement | null>(null);
   const isCancellingRef = useRef(false);
 
-  const capabilities = useProductCapabilities();
-  const showPolicyBadge = Boolean(capabilities.governance && policyStatus);
   const displayTitle = getTerminalPaneDisplayTitle(pane);
 
   const startRename = useCallback(() => {
@@ -144,44 +139,6 @@ export function TerminalPaneHeader({
         >
           {displayTitle}
         </div>
-      )}
-
-      {showPolicyBadge && (
-        <span
-          className="terminal-pane-policy-badge"
-          title={
-            policyStatus === 'active'
-              ? 'Interactive shell commands are evaluated before submission.'
-              : policyStatus === 'off'
-                ? 'Interactive shell policy is Off.'
-                : 'Native policy interception unavailable for this shell.'
-          }
-          style={{
-            fontSize: '9px',
-            padding: '1px 5px',
-            borderRadius: '3px',
-            background:
-              policyStatus === 'active'
-                ? 'rgba(74, 222, 128, 0.15)'
-                : 'rgba(255, 255, 255, 0.05)',
-            color:
-              policyStatus === 'active'
-                ? '#4ade80'
-                : '#8b949e',
-            marginRight: '6px',
-            cursor: 'default',
-            display: 'inline-flex',
-            alignItems: 'center',
-            height: '16px',
-            userSelect: 'none',
-          }}
-        >
-          {policyStatus === 'active'
-            ? 'Policy: Active'
-            : policyStatus === 'off'
-              ? 'Policy: Off'
-              : 'Policy: Unsupported shell'}
-        </span>
       )}
 
       <div className="terminal-pane-actions-container" ref={menuRef}>

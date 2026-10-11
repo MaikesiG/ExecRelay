@@ -38,17 +38,13 @@
 /* Ensure child views expand to natural content height and delegate scrolling to ActiveMonitorView */
 .active-monitor-view .context-panel-content,
 .active-monitor-view .changes-view-surface,
-.active-monitor-view .verification-view-surface,
-.active-monitor-view .agents-view-surface,
-.active-monitor-view .governance-view-surface {
+.active-monitor-view .verification-view-surface {
   width: 100%;
   min-height: min-content;
   flex: 1 0 auto;
 }
 
-.active-monitor-view .verification-panel,
-.active-monitor-view .agents-panel,
-.active-monitor-view .agent-run-comparison-view {
+.active-monitor-view .verification-panel {
   height: auto;
   min-height: min-content;
   overflow-y: visible;

@@ -34,9 +34,6 @@ const {
   createExecutionSelectionItem,
   createVerificationResultSelectionItem,
   createAgentEventSelectionItem,
-  createPolicyDecisionSelectionItem,
-  createApprovalRecordSelectionItem,
-  createPolicyAuditSelectionItem,
   createUsageSummarySelectionItem,
   formatSelectionSummary,
 } = selModelMod.exports;
@@ -69,7 +66,6 @@ const {
   formatRepositoryChangeEvidence,
   formatVerificationEvidence,
   formatAgentEventEvidence,
-  formatPolicyEvidence,
   formatStructuredEvidence,
   formatUsageEvidence,
   formatAttributionEvidence,
@@ -580,47 +576,6 @@ console.log('\n--- Test 9: Agent Activity Evidence ---');
 }
 
 // ============================================================================
-// Test 10: Policy & Governance Evidence
-// ============================================================================
-console.log('\n--- Test 10: Policy & Governance Evidence ---');
-{
-  const decisionItem = createPolicyDecisionSelectionItem({
-    decisionId: 'dec-1',
-    actionRequestId: 'req-1',
-    effect: 'require-approval',
-    command: 'rm -rf /tmp/data',
-    requesterType: 'agent',
-    governanceCoverage: 'pre-execution',
-    reason: 'Destructive deletion requires explicit approval',
-    warningCodes: ['compound-shell-syntax'],
-  });
-
-  const approvalItem = createApprovalRecordSelectionItem({
-    approvalId: 'app-1',
-    actionRequestId: 'req-1',
-    status: 'approved',
-    command: 'rm -rf /tmp/data',
-    resolvedByActorId: 'actor-human-local',
-    comment: 'Approved for testing cleanup',
-  });
-
-  const resolved = await resolveEvidenceSelections([decisionItem, approvalItem], {});
-  const markdown = formatResolvedEvidenceForClipboard(resolved);
-
-  assert.ok(markdown.includes('## Policy Decision — REQUIRE-APPROVAL'));
-  assert.ok(markdown.includes('Action Request: `rm -rf /tmp/data`'));
-  assert.ok(markdown.includes('Requester: agent'));
-  assert.ok(markdown.includes('Coverage: pre-execution'));
-  assert.ok(markdown.includes('Warnings: compound-shell-syntax'));
-
-  assert.ok(markdown.includes('## Approval Record — APPROVED'));
-  assert.ok(markdown.includes('Resolved By: actor-human-local'));
-  assert.ok(markdown.includes('Comment: Approved for testing cleanup'));
-
-  console.log('✓ Policy decisions and approval records format with action request and audit metadata');
-}
-
-// ============================================================================
 // Test 11: Usage Evidence (Unknown Tokens != 0 Invariant)
 // ============================================================================
 console.log('\n--- Test 11: Usage Evidence (Unknown Tokens != 0 Invariant) ---');
@@ -676,20 +631,18 @@ console.log('\n--- Test 12: Multi-Domain Mixed Export ---');
       source: 'claude',
       payload: { text: 'Done' },
     }),
-    createPolicyDecisionSelectionItem({ decisionId: 'd1', actionRequestId: 'rq1', effect: 'allow', command: 'ls', requesterType: 'human' }),
   ];
 
   const resolved = await resolveEvidenceSelections(items, {});
-  assert.strictEqual(resolved.length, 5);
+  assert.strictEqual(resolved.length, 4);
 
   const markdown = formatResolvedEvidenceForClipboard(resolved);
   assert.ok(markdown.includes('## Execution — git status'));
   assert.ok(markdown.includes('## Repository Change — README.md'));
   assert.ok(markdown.includes('## Verification — Unit Tests'));
   assert.ok(markdown.includes('## Agent Activity — message'));
-  assert.ok(markdown.includes('## Policy Decision — ALLOW'));
 
-  console.log('✓ Multi-domain selection formats into single cohesive document with all 5 items');
+  console.log('✓ Stable multi-domain selection formats into one cohesive document with all 4 items');
 }
 
 // ============================================================================
@@ -697,17 +650,17 @@ console.log('\n--- Test 12: Multi-Domain Mixed Export ---');
 // ============================================================================
 console.log('\n--- Test 13: Deterministic Ordering ---');
 {
-  const itemA = { kind: 'policy', id: 'pol-1', subkind: 'decision', selectedAt: 300 };
+  const itemA = { kind: 'usage', id: 'usage-1', provider: 'openai', selectedAt: 300 };
   const itemB = { kind: 'execution', id: 'exec-1', command: 'echo hello', selectedAt: 200 };
   const itemC = { kind: 'repository-change', id: 'repo-1', path: 'src/main.ts', status: 'modified', selectedAt: 100 };
 
-  // Pass in mixed order: Policy, Execution, Repo
+  // Pass in mixed order: Usage, Execution, Repo
   const sorted = sortResolvedEvidenceItems([itemA, itemB, itemC]);
 
-  // Expected canonical domain order: Execution (1), Repository Change (2), Policy (7)
+  // Expected canonical domain order: Execution (1), Repository Change (2), Usage (8)
   assert.strictEqual(sorted[0].kind, 'execution');
   assert.strictEqual(sorted[1].kind, 'repository-change');
-  assert.strictEqual(sorted[2].kind, 'policy');
+  assert.strictEqual(sorted[2].kind, 'usage');
 
   // Same domain ordered by selectedAt
   const exec1 = { kind: 'execution', id: 'exec-late', command: 'b', selectedAt: 500 };

@@ -37,6 +37,7 @@ export type ShellIntegrationEvent =
     }
   | {
       type: 'command-start';
+      command?: string;
       nonce?: string;
       trust: ShellIntegrationEventTrust;
     }
@@ -72,6 +73,10 @@ export interface ParseResult {
    * Any shell integration events detected in this chunk.
    */
   events: ShellIntegrationEvent[];
+  orderedParts: Array<{
+    cleanText: string;
+    events: ShellIntegrationEvent[];
+  }>;
 }
 
 /**
@@ -82,10 +87,12 @@ export interface ParseResult {
 const OSC_133_REGEX = new RegExp('\\x1b\\]133;([^\\x07\\x1b]*)(?:\\x07|\\x1b\\\\)', 'g');
 
 /**
- * Maximum buffer size for incomplete escape sequences before forcing flush.
- * Prevents memory exhaustion on runaway or unterminated escape sequences.
+ * Maximum buffer sizes for incomplete escape sequences before forcing flush.
+ * Authenticated command-start payloads may contain a base64-encoded maximum-size
+ * terminal input; all other sequences retain the stricter runaway guard.
  */
 const MAX_ESCAPE_BUFFER_SIZE = 4096;
+const MAX_TRUSTED_COMMAND_BUFFER_SIZE = 128 * 1024;
 
 /**
  * Parses a single OSC 133 payload string (e.g. "D;0;aid=nonce" or "C;aid=nonce" or "D;0").
@@ -129,12 +136,17 @@ export function parseOsc133Payload(
         nonce,
         trust: isTrusted,
       };
-    case 'C':
+    case 'C': {
+      const commandPart = parts.find((part) => part.startsWith('cmd='));
       return {
         type: 'command-start',
+        command: commandPart
+          ? decodeBase64Utf8(commandPart.slice(4))
+          : undefined,
         nonce,
         trust: isTrusted,
       };
+    }
     case 'D': {
       let exitCode: number | null = null;
       if (parts.length > 1) {
@@ -322,22 +334,39 @@ export class ShellIntegrationStreamParser {
     this.partialBuffer = '';
 
     if (!input.includes('\x1b')) {
-      return { cleanText: input, events: [] };
+      return {
+        cleanText: input,
+        events: [],
+        orderedParts: input ? [{ cleanText: input, events: [] }] : [],
+      };
     }
 
     const events: ShellIntegrationEvent[] = [];
+    const orderedParts: ParseResult['orderedParts'] = [];
     let cleanText = '';
+    let currentTextPart = '';
     let i = 0;
+
+    const appendText = (text: string) => {
+      cleanText += text;
+      currentTextPart += text;
+    };
+    const flushTextPart = () => {
+      if (currentTextPart) {
+        orderedParts.push({ cleanText: currentTextPart, events: [] });
+        currentTextPart = '';
+      }
+    };
 
     while (i < input.length) {
       const escIdx = input.indexOf('\x1b', i);
       if (escIdx === -1) {
-        cleanText += input.slice(i);
+        appendText(input.slice(i));
         break;
       }
 
       // Append text preceding the escape sequence
-      cleanText += input.slice(i, escIdx);
+      appendText(input.slice(i, escIdx));
       i = escIdx;
 
       // Check if this looks like the start of an OSC sequence (\x1b])
@@ -349,7 +378,7 @@ export class ShellIntegrationStreamParser {
 
       if (input[i + 1] !== ']') {
         // Not an OSC sequence, pass ESC through as normal
-        cleanText += input[i];
+        appendText(input[i]);
         i += 1;
         continue;
       }
@@ -365,7 +394,7 @@ export class ShellIntegrationStreamParser {
           break;
         } else {
           // Not OSC 133, leave as is
-          cleanText += input[i];
+          appendText(input[i]);
           i += 1;
           continue;
         }
@@ -394,10 +423,18 @@ export class ShellIntegrationStreamParser {
         }
 
         if (termIdx === -1) {
+          const isExpectedCommandPayload = Boolean(
+            this.expectedNonce &&
+              remaining.startsWith(`${prefix}C;`) &&
+              remaining.includes(`aid=${this.expectedNonce};cmd=`),
+          );
+          const maxBufferSize = isExpectedCommandPayload
+            ? MAX_TRUSTED_COMMAND_BUFFER_SIZE
+            : MAX_ESCAPE_BUFFER_SIZE;
           // Unterminated sequence: check buffer size guard
-          if (remaining.length > MAX_ESCAPE_BUFFER_SIZE) {
+          if (remaining.length > maxBufferSize) {
             // Runaway or malformed sequence without terminator: flush safely
-            cleanText += remaining.slice(0, prefix.length);
+            appendText(remaining.slice(0, prefix.length));
             i += prefix.length;
             continue;
           }
@@ -411,18 +448,21 @@ export class ShellIntegrationStreamParser {
         const payload = input.slice(i + prefix.length, termIdx);
         const event = parseOsc133Payload(payload, this.expectedNonce);
         if (event) {
+          flushTextPart();
           events.push(event);
+          orderedParts.push({ cleanText: '', events: [event] });
         }
         // Advance past terminator without appending to cleanText
         i = termIdx + termLen;
       } else {
         // Other OSC sequence (e.g. OSC 0, OSC 7): pass through to cleanText
-        cleanText += input[i];
+        appendText(input[i]);
         i += 1;
       }
     }
 
-    return { cleanText, events };
+    flushTextPart();
+    return { cleanText, events, orderedParts };
   }
 
   /**

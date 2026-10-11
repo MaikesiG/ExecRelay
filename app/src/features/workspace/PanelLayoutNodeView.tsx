@@ -5,6 +5,10 @@ import type {
   LogicalWorkspaceId,
   CapturePanel,
 } from './types';
+import {
+  DerivedSurfaceErrorBoundary,
+  type DerivedSurfaceErrorBoundaryProps,
+} from './DerivedSurfaceErrorBoundary';
 import { TerminalPaneHeader } from './TerminalPaneHeader';
 import { collectPanelIds } from './panelLayoutTree';
 import { PaneDivider } from './PaneDivider';
@@ -38,6 +42,10 @@ export interface PanelLayoutTranscriptProps {
   isListening: boolean;
   captureStatus?: CaptureStatus;
   isTargetSelectorLocked?: boolean;
+  availableCapturePanes?: import('../transcript/TranscriptCapturePanel').CaptureTargetPaneInfo[];
+  selectedCapturePaneIds?: string[];
+  captureTargetMode?: 'all' | 'explicit';
+  listeningCapturePaneCount?: number;
   onToggleListening: () => void;
   onStartCapture?: () => void;
   onPauseCapture?: () => void;
@@ -91,11 +99,6 @@ export interface PanelLayoutTranscriptProps {
   isCollectingRepositoryEvidence?: boolean;
   onRefreshRepositoryEvidence?: () => void;
   changeAttributions?: import('../attribution/types').ChangeAttribution[];
-  agentRuns?: unknown[];
-  activeAgentRun?: unknown | null;
-  onVerifyAgentRun?: (runId: string) => void;
-  onCancelAgentRun?: (runId: string) => void;
-  onStartAgentRun?: (taskText?: string, adapterId?: string) => void;
   activeMonitorView?: import('../shortcuts/types').MonitorView;
   onSelectMonitorView?: (view: import('../shortcuts/types').MonitorView) => void;
   isMonitorFocused?: boolean;
@@ -160,109 +163,8 @@ export interface PanelLayoutNodeViewProps {
   transcriptProps: PanelLayoutTranscriptProps;
 }
 
-export interface PanelErrorBoundaryProps {
-  children: React.ReactNode;
-  panelId: string;
-  fallbackTitle?: string;
-  onError?: (error: Error, errorInfo: React.ErrorInfo) => void;
-}
-
-export interface PanelErrorBoundaryState {
-  hasError: boolean;
-  errorMessage: string | null;
-}
-
-export class PanelErrorBoundary extends React.Component<
-  PanelErrorBoundaryProps,
-  PanelErrorBoundaryState
-> {
-  constructor(props: PanelErrorBoundaryProps) {
-    super(props);
-    this.state = { hasError: false, errorMessage: null };
-  }
-
-  static getDerivedStateFromError(error: unknown): PanelErrorBoundaryState {
-    const msg = error instanceof Error ? error.message : String(error);
-    return { hasError: true, errorMessage: msg };
-  }
-
-  componentDidCatch(error: Error, info: React.ErrorInfo): void {
-    console.error(
-      `[PanelErrorBoundary] Render failure caught in panel '${this.props.panelId}':`,
-      error,
-      info,
-    );
-    this.props.onError?.(error, info);
-  }
-
-  private handleReset = () => {
-    this.setState({ hasError: false, errorMessage: null });
-  };
-
-  render() {
-    if (this.state.hasError) {
-      return (
-        <div
-          className="panel-error-fallback"
-          role="alert"
-          data-testid={`panel-error-${this.props.panelId}`}
-          style={{
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
-            height: '100%',
-            width: '100%',
-            padding: '24px',
-            boxSizing: 'border-box',
-            color: '#f87171',
-            background: 'rgba(248, 113, 113, 0.04)',
-            textAlign: 'center',
-          }}
-        >
-          <span style={{ fontSize: '20px', marginBottom: '8px' }} aria-hidden="true">
-            ⚠
-          </span>
-          <p style={{ margin: '0 0 6px 0', fontSize: '13px', fontWeight: 500, color: '#fca5a5' }}>
-            {this.props.fallbackTitle ?? 'Surface encountered a render error'}
-          </p>
-          {this.state.errorMessage && (
-            <p
-              style={{
-                margin: '0 0 12px 0',
-                fontSize: '11px',
-                color: '#8b949e',
-                fontFamily: 'monospace',
-                maxWidth: '90%',
-                wordBreak: 'break-word',
-              }}
-            >
-              {this.state.errorMessage}
-            </p>
-          )}
-          <button
-            type="button"
-            className="compact-btn"
-            onClick={this.handleReset}
-            style={{
-              padding: '4px 12px',
-              fontSize: '12px',
-              borderRadius: '6px',
-              cursor: 'pointer',
-              background: 'rgba(255, 255, 255, 0.08)',
-              color: '#e2e8f0',
-              border: '1px solid rgba(255, 255, 255, 0.15)',
-            }}
-          >
-            Try Again
-          </button>
-        </div>
-      );
-    }
-
-    return this.props.children;
-  }
-}
+export { DerivedSurfaceErrorBoundary as PanelErrorBoundary };
+export type { DerivedSurfaceErrorBoundaryProps as PanelErrorBoundaryProps };
 
 export function PanelLayoutNodeView({
   node,
@@ -310,23 +212,16 @@ export function PanelLayoutNodeView({
           onClick={() => onSetActivePane(pane.id)}
           style={{ width: '100%', height: '100%', minWidth: 0, minHeight: 0 }}
         >
-          {(() => {
-            const policyStatus = undefined;
-
-            return (
-              <TerminalPaneHeader
-                pane={pane}
-                isPaneActive={isPaneActive}
-                isMultiPane={isMultiPane}
-                policyStatus={policyStatus}
-                onSetActivePane={() => onSetActivePane(pane.id)}
-                onClosePane={() => onClosePane?.(pane.id)}
-                onRenamePane={(customTitle) =>
-                  onRenamePane?.(workspaceId, tab.id, pane.id, customTitle)
-                }
-              />
-            );
-          })()}
+          <TerminalPaneHeader
+            pane={pane}
+            isPaneActive={isPaneActive}
+            isMultiPane={isMultiPane}
+            onSetActivePane={() => onSetActivePane(pane.id)}
+            onClosePane={() => onClosePane?.(pane.id)}
+            onRenamePane={(customTitle) =>
+              onRenamePane?.(workspaceId, tab.id, pane.id, customTitle)
+            }
+          />
 
           {onDismissCaptureWarning && (
             <CaptureWarningBanner
@@ -414,6 +309,7 @@ export function PanelLayoutNodeView({
           className="capture-panel-leaf-wrapper"
           style={{ width: '100%', height: '100%', minWidth: 0, minHeight: 0, display: 'flex' }}
         >
+          <DerivedSurfaceErrorBoundary surfaceName="Capture panel" panelId={panel.id}>
           <TranscriptCapturePanel
             isListening={transcriptProps.isListening}
             blocks={paneBlocks}
@@ -421,8 +317,14 @@ export function PanelLayoutNodeView({
             currentBatchBlockCount={transcriptProps.currentBatchBlockCount}
             selectedBlockIds={transcriptProps.selectedBlockIds}
             feedback={transcriptProps.feedback}
-            availablePanes={availablePanes}
-            selectedCapturePaneIds={capturePanel.selectedCapturePaneIds ?? []}
+            availablePanes={transcriptProps.availableCapturePanes ?? availablePanes}
+            selectedCapturePaneIds={
+              transcriptProps.selectedCapturePaneIds ??
+              capturePanel.selectedCapturePaneIds ??
+              []
+            }
+            captureTargetMode={transcriptProps.captureTargetMode}
+            listeningPaneCount={transcriptProps.listeningCapturePaneCount}
             isTargetSelectorLocked={transcriptProps.isTargetSelectorLocked}
             captureStatusOverride={transcriptProps.captureStatus}
             onToggleListening={transcriptProps.onToggleListening}
@@ -477,16 +379,12 @@ export function PanelLayoutNodeView({
             isCollectingRepositoryEvidence={transcriptProps.isCollectingRepositoryEvidence}
             onRefreshRepositoryEvidence={transcriptProps.onRefreshRepositoryEvidence}
             changeAttributions={transcriptProps.changeAttributions}
-            agentRuns={transcriptProps.agentRuns}
-            activeAgentRun={transcriptProps.activeAgentRun}
-            onVerifyAgentRun={transcriptProps.onVerifyAgentRun}
-            onCancelAgentRun={transcriptProps.onCancelAgentRun}
-            onStartAgentRun={transcriptProps.onStartAgentRun}
             activeView={transcriptProps.activeMonitorView}
             onViewChange={transcriptProps.onSelectMonitorView}
             isMonitorFocused={transcriptProps.isMonitorFocused}
             onToggleMonitorFocus={transcriptProps.onToggleMonitorFocus}
           />
+        </DerivedSurfaceErrorBoundary>
         </div>
       );
     }

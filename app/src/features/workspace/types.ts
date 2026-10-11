@@ -39,6 +39,8 @@ export type PaneAccentId =
   | 'cyan'
   | 'rose';
 
+export type TerminalTabColorKey = PaneAccentId;
+
 export const PANE_ACCENT_PALETTE: readonly PaneAccentId[] = [
   'blue',
   'violet',
@@ -141,6 +143,10 @@ export type PaneLayoutDirection = 'horizontal' | 'vertical';
 export interface TerminalTab {
   id: TerminalTabId;
   workspaceId: LogicalWorkspaceId;
+  /** User-owned semantic name and complete user-visible tab name. */
+  baseName?: string;
+  /** Stable visual identity token; never used for runtime/domain ownership. */
+  colorKey?: TerminalTabColorKey;
   label: string;
   name?: string;
 
@@ -204,6 +210,7 @@ export interface LogicalWorkspace {
     currentBatch: CaptureBatch | null;
     batchCounter: number;
     blocks: TranscriptBlock[];
+    targetScope?: import('../transcript/captureTargetScope').CaptureTargetScope;
   };
 
   selection: {
@@ -218,17 +225,49 @@ export interface LogicalWorkspace {
   repositorySnapshots?: import('../evidenceCollectors/types').RepositorySnapshot[];
   latestCollectionRun?: import('../evidenceCollectors/types').EvidenceCollectionRun;
   changeAttributions?: import('../attribution/types').ChangeAttribution[];
-  agentRuns?: unknown[];
-  activeAgentRunId?: string;
   projectCwd?: string;
-
-  policyConfig?: unknown;
-  policyAuditEvents?: unknown[];
 }
 
 export interface CaptureStatusLight {
   paneId: string;
   status: CaptureStatus;
+}
+
+export type WorkspaceCaptureStatus = 'ready' | 'capturing' | 'paused';
+
+export function getWorkspaceCaptureStatus(
+  workspace: Pick<LogicalWorkspace, 'capture'> | null | undefined,
+): WorkspaceCaptureStatus {
+  if (!workspace || !workspace.capture) {
+    return 'ready';
+  }
+
+  if (workspace.capture.isListening) {
+    return 'capturing';
+  }
+
+  if (
+    workspace.capture.currentBatch &&
+    workspace.capture.currentBatch.stoppedAt === null
+  ) {
+    return 'paused';
+  }
+
+  return 'ready';
+}
+
+export function getWorkspaceCaptureStatusLabel(
+  status: WorkspaceCaptureStatus | CaptureStatus,
+): string {
+  switch (status) {
+    case 'capturing':
+      return 'Capture active';
+    case 'paused':
+      return 'Capture paused';
+    case 'ready':
+    default:
+      return 'Capture idle';
+  }
 }
 
 export function getCaptureStatusLightsForTab(

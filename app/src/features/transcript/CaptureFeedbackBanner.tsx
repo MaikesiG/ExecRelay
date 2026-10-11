@@ -26,6 +26,7 @@ export interface CaptureFeedbackBannerProps {
   role?: string;
   ariaLive?: 'polite' | 'assertive' | 'off';
   onKeyDown?: React.KeyboardEventHandler<HTMLDivElement>;
+  durationMs?: number;
 }
 
 /**
@@ -50,6 +51,7 @@ export function CaptureFeedbackBanner({
   role: customRole,
   ariaLive: customAriaLive,
   onKeyDown,
+  durationMs,
 }: CaptureFeedbackBannerProps) {
   const isError = type === 'error';
   const role = customRole || (isError ? 'alert' : actions ? 'region' : 'status');
@@ -136,6 +138,16 @@ export function CaptureFeedbackBanner({
         <div className="capture-feedback-banner-body">
           {body}
         </div>
+      )}
+
+      {durationMs !== undefined && durationMs > 0 && (
+        <div
+          className="capture-feedback-progress-bar"
+          aria-hidden="true"
+          style={{
+            animationDuration: `${durationMs}ms`,
+          }}
+        />
       )}
     </div>
   );

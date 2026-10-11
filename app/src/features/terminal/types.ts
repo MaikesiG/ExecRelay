@@ -59,6 +59,7 @@ export interface TerminalSessionInfo {
   rows: number;
   exitCode?: number | null;
   integrationNonce?: string | null;
+  shellIntegrationAvailable?: boolean;
 }
 
 /* ========================================================================== */

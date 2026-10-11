@@ -20,25 +20,16 @@ export const TERMINAL_EDITION_CAPABILITIES: ProductCapabilities = Object.freeze(
   capture: true,
   changes: true,
   verification: true,
-  agents: false,
-  governance: false,
-  organization: false,
-  analytics: false,
 });
 
 /**
  * Internal ExecRelay Workbench capabilities.
- * Exposes Agent management, Governance, and active developer surfaces.
  */
 export const INTERNAL_EDITION_CAPABILITIES: ProductCapabilities = Object.freeze({
   terminal: true,
   capture: true,
   changes: true,
   verification: true,
-  agents: true,
-  governance: true,
-  organization: false,
-  analytics: false,
 });
 
 /**
@@ -121,10 +112,6 @@ export function isMonitorViewEnabled(
       return capabilities.changes;
     case 'verification':
       return capabilities.verification;
-    case 'agents':
-      return capabilities.agents;
-    case 'governance':
-      return capabilities.governance;
     default:
       return false;
   }
@@ -146,10 +133,18 @@ export function isAppCommandEnabled(
       return capabilities.changes;
     case 'focus-verification':
       return capabilities.verification;
-    case 'focus-agents':
-      return capabilities.agents;
-    case 'focus-governance':
-      return capabilities.governance;
+    case 'workspace.previousTab':
+    case 'workspace.nextTab':
+    case 'terminal.previousTab':
+    case 'terminal.nextTab':
+    case 'terminal.split-right':
+    case 'terminal.split-down':
+    case 'terminal.close-pane':
+    case 'terminal.focus-left':
+    case 'terminal.focus-right':
+    case 'terminal.focus-up':
+    case 'terminal.focus-down':
+      return true;
     default:
       return false;
   }
@@ -165,8 +160,6 @@ export function getEnabledMonitorViews(
     'capture-evidence',
     'changes',
     'verification',
-    'agents',
-    'governance',
   ];
   return allViews.filter((v) => isMonitorViewEnabled(v, capabilities));
 }
@@ -182,8 +175,6 @@ export function getEnabledAppCommands(
     'focus-capture-evidence',
     'focus-changes',
     'focus-verification',
-    'focus-agents',
-    'focus-governance',
   ];
   return allCmds.filter((cmd) => isAppCommandEnabled(cmd, capabilities));
 }

@@ -9,10 +9,16 @@ import type {
   RepositoryFileSelectionItem,
   ExecutionSelectionItem,
   AgentEventSelectionItem,
-  PolicyAuditSelectionItem,
   VerificationResultSelectionItem,
 } from './types';
-import type { AgentEvent } from './resolvedEvidenceTypes';
+
+interface SelectableAgentEvent {
+  id: string;
+  agentRunId: string;
+  type: string;
+  source: string;
+  payload: unknown;
+}
 
 /**
  * Creates an empty EvidenceSelectionState.
@@ -171,9 +177,6 @@ export function getSelectedCountsByKind(
     'repository-attribution': 0,
     'agent-event': 0,
     'usage-summary': 0,
-    'policy-decision': 0,
-    'approval-record': 0,
-    'policy-audit': 0,
   };
 
   for (const item of state.items.values()) {
@@ -187,7 +190,7 @@ export function getSelectedCountsByKind(
 
 /**
  * Formats a concise human-readable summary of selected items, e.g.:
- * \"3 repository files, 1 execution\"
+ * "3 repository files, 1 execution"
  */
 export function formatSelectionSummary(state: EvidenceSelectionState): string {
   const counts = getSelectedCountsByKind(state);
@@ -221,146 +224,8 @@ export function formatSelectionSummary(state: EvidenceSelectionState): string {
     const c = counts['usage-summary'];
     parts.push(`${c} usage ${c === 1 ? 'summary' : 'summaries'}`);
   }
-  if (counts['policy-decision'] > 0) {
-    const c = counts['policy-decision'];
-    parts.push(`${c} policy ${c === 1 ? 'decision' : 'decisions'}`);
-  }
-  if (counts['approval-record'] > 0) {
-    const c = counts['approval-record'];
-    parts.push(`${c} approval ${c === 1 ? 'record' : 'records'}`);
-  }
-  if (counts['policy-audit'] > 0) {
-    const c = counts['policy-audit'];
-    parts.push(`${c} governance audit ${c === 1 ? 'event' : 'events'}`);
-  }
 
   return parts.length > 0 ? parts.join(', ') : '0 items selected';
-}
-
-export function createPolicyDecisionSelectionItem(params: {
-  decisionId: string;
-  actionRequestId: string;
-  effect: 'allow' | 'require-approval' | 'deny';
-  command?: string;
-  filePath?: string;
-  toolName?: string;
-  reason?: string;
-  requesterType: string;
-  agentRunId?: string;
-  governanceCoverage?: string;
-  shellType?: string;
-  warningCodes?: string[];
-}): import('./types').PolicyDecisionSelectionItem {
-  return {
-    id: `policy:${params.decisionId}`,
-    kind: 'policy-decision',
-    decisionId: params.decisionId,
-    actionRequestId: params.actionRequestId,
-    effect: params.effect,
-    command: params.command,
-    filePath: params.filePath,
-    toolName: params.toolName,
-    reason: params.reason,
-    requesterType: params.requesterType,
-    agentRunId: params.agentRunId,
-    governanceCoverage: params.governanceCoverage,
-    shellType: params.shellType,
-    warningCodes: params.warningCodes,
-    selectedAt: Date.now(),
-  };
-}
-
-export function createApprovalRecordSelectionItem(params: {
-  approvalId: string;
-  actionRequestId: string;
-  status: 'pending' | 'approved' | 'denied' | 'consumed' | 'cancelled' | 'expired';
-  command?: string;
-  filePath?: string;
-  toolName?: string;
-  reason?: string;
-  resolvedByActorId?: string;
-  comment?: string;
-  agentRunId?: string;
-  governanceCoverage?: string;
-  shellType?: string;
-  warningCodes?: string[];
-}): import('./types').ApprovalRecordSelectionItem {
-  return {
-    id: `approval:${params.approvalId}`,
-    kind: 'approval-record',
-    approvalId: params.approvalId,
-    actionRequestId: params.actionRequestId,
-    status: params.status,
-    command: params.command,
-    filePath: params.filePath,
-    toolName: params.toolName,
-    reason: params.reason,
-    resolvedByActorId: params.resolvedByActorId,
-    comment: params.comment,
-    agentRunId: params.agentRunId,
-    governanceCoverage: params.governanceCoverage,
-    shellType: params.shellType,
-    warningCodes: params.warningCodes,
-    selectedAt: Date.now(),
-  };
-}
-
-export function createPolicyAuditSelectionItem(params: {
-  auditEventId?: string;
-  actionRequestId?: string;
-  governanceCoverage?: string;
-  command?: string;
-  filePath?: string;
-  shellType?: string;
-  decision?: string;
-  approvalStatus?: string;
-  warningCodes?: string[];
-  reason?: string;
-  timestamp?: number;
-  auditEvent?: {
-    id: string;
-    actionRequestId?: string;
-    governanceCoverage: string;
-    command?: string;
-    filePath?: string;
-    shellType?: string;
-    decision?: string;
-    approvalStatus?: string;
-    warningCodes?: string[];
-    reason?: string;
-    occurredAt?: number;
-    timestamp?: number;
-  };
-}): PolicyAuditSelectionItem {
-  const ev = params.auditEvent;
-  const auditEventId = ev ? ev.id : (params.auditEventId || '');
-  const governanceCoverage = ev ? ev.governanceCoverage : (params.governanceCoverage || 'observed-only');
-  const actionRequestId = ev ? ev.actionRequestId : params.actionRequestId;
-  const command = ev ? ev.command : params.command;
-  const filePath = ev ? ev.filePath : params.filePath;
-  const shellType = ev ? ev.shellType : params.shellType;
-  const decision = ev ? ev.decision : params.decision;
-  const approvalStatus = ev ? ev.approvalStatus : params.approvalStatus;
-  const warningCodes = ev ? ev.warningCodes : params.warningCodes;
-  const reason = ev ? ev.reason : params.reason;
-  const timestamp = ev ? (ev.timestamp ?? ev.occurredAt ?? Date.now()) : (params.timestamp ?? Date.now());
-
-  return {
-    id: `audit:${auditEventId}`,
-    kind: 'policy-audit',
-    auditEventId,
-    actionRequestId,
-    governanceCoverage,
-    command,
-    filePath,
-    shellType,
-    decision,
-    approvalStatus,
-    warningCodes,
-    reason,
-    timestamp,
-    selectedAt: Date.now(),
-  };
 }
 
 export function createUsageSummarySelectionItem(params: {
@@ -492,7 +357,7 @@ export function createExecutionSelectionItem(params: {
 /**
  * Determines whether an AgentEvent represents useful selectable activity.
  */
-export function isSelectableAgentEvent(event: AgentEvent): boolean {
+export function isSelectableAgentEvent(event: SelectableAgentEvent): boolean {
   if (event.type === 'permission' || event.type === 'user-input-request') {
     return true;
   }
@@ -516,7 +381,7 @@ export function isSelectableAgentEvent(event: AgentEvent): boolean {
 /**
  * Formats a clean human-readable summary of a selectable AgentEvent for prompt context.
  */
-export function formatAgentEventSummary(event: AgentEvent): string {
+export function formatAgentEventSummary(event: SelectableAgentEvent): string {
   const payload = event.payload as Record<string, unknown> | undefined;
   if (!payload) return `[${event.type}]`;
 
@@ -560,7 +425,7 @@ export function formatAgentEventSummary(event: AgentEvent): string {
 /**
  * Helper to construct an AgentEventSelectionItem from a selectable AgentEvent.
  */
-export function createAgentEventSelectionItem(event: AgentEvent): AgentEventSelectionItem {
+export function createAgentEventSelectionItem(event: SelectableAgentEvent): AgentEventSelectionItem {
   const payload = event.payload as Record<string, unknown> | undefined;
   return {
     id: `agent-evt:${event.id}`,

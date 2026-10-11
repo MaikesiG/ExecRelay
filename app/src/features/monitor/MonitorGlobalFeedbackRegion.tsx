@@ -43,6 +43,11 @@ export const MonitorGlobalFeedbackRegion = memo(function MonitorGlobalFeedbackRe
           className={`monitor-feedback-card monitor-feedback-card--${item.level}`}
           data-source={item.source}
           data-level={item.level}
+          data-testid='capture-feedback-banner'
+          data-banner-type={item.level}
+          style={{
+            ['--feedback-duration' as string]: `${item.durationMs || 3000}ms`,
+          }}
         >
           <div className='monitor-feedback-left'>
             <span
@@ -69,6 +74,16 @@ export const MonitorGlobalFeedbackRegion = memo(function MonitorGlobalFeedbackRe
             >
               ×
             </button>
+          )}
+
+          {item.durationMs !== 0 && (
+            <div
+              className='monitor-feedback-progress-bar'
+              aria-hidden='true'
+              style={{
+                animationDuration: `${item.durationMs || 3000}ms`,
+              }}
+            />
           )}
         </div>
       ))}

@@ -49,12 +49,6 @@ ExecRelay Terminal v0.1 is built local-first:
 
 ---
 
-## Screenshot
-
-> *Note: Application interface screenshot is being prepared and will be available at `docs/assets/execrelay-terminal.png` with the final release packaging.*
-
----
-
 ## Download
 
 ExecRelay Terminal v0.1 currently targets macOS.
@@ -62,7 +56,7 @@ ExecRelay Terminal v0.1 currently targets macOS.
 - **Public Download Page:** [Download Page](https://maikesig.github.io/ExecRelay/download.html)
 - **GitHub Releases:** [Releases](https://github.com/MaikesiG/ExecRelay/releases)
 
-The v0.1.0 release artifact is being prepared. Pre-release testing targets macOS (Apple Silicon arm64). Packaged DMG artifacts and notarization details will be published directly to GitHub Releases upon completion.
+ExecRelay v0.1.2 is prepared for release on macOS (Apple Silicon, arm64). The Developer ID-signed, Apple-notarized DMG and its SHA-256 checksum will be published on GitHub Releases.
 
 ---
 
@@ -135,7 +129,7 @@ PTY / process / filesystem / repository
 
 ## Status
 
-ExecRelay Terminal v0.1.0
+ExecRelay Terminal v0.1.2
 
 Current public scope:
 - **Terminal:** PTY management, split panes, and shell integration.

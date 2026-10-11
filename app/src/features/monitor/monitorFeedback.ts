@@ -14,6 +14,7 @@ import type {
 } from './types';
 
 export const MAX_VISIBLE_MONITOR_FEEDBACK = 3;
+export const DEFAULT_TRANSIENT_FEEDBACK_DURATION_MS = 3000;
 
 export const DEFAULT_FEEDBACK_DURATIONS: Record<MonitorFeedbackLevel, number> = {
   success: 4000,
@@ -38,28 +39,42 @@ export class MonitorFeedbackStore {
         ? input.durationMs
         : DEFAULT_FEEDBACK_DURATIONS[input.level];
 
-    // Deduplication check: if identical feedback arrived in the last 2500ms, update it
-    const existingIdx = this.items.findIndex(
-      (item) =>
-        item.source === input.source &&
-        item.level === input.level &&
-        item.title === input.title &&
-        now - item.createdAt < 2500,
-    );
+    // Deduplication check:
+    // If dedupeKey is provided, match active visible items by dedupeKey.
+    // Otherwise fallback to identical source + level + title within last 2500ms.
+    const existingIdx = input.dedupeKey
+      ? this.items.findIndex((item) => item.dedupeKey === input.dedupeKey)
+      : this.items.findIndex(
+          (item) =>
+            item.source === input.source &&
+            item.level === input.level &&
+            item.title === input.title &&
+            now - item.createdAt < 2500,
+        );
 
     if (existingIdx !== -1) {
       const existing = this.items[existingIdx];
+      const levelChanged = existing.level !== input.level;
       const updated: MonitorFeedback = {
         ...existing,
-        message: input.message ?? existing.message,
-        createdAt: now,
+        level: input.level,
+        title: input.title || existing.title,
+        message: input.message !== undefined ? input.message : existing.message,
+        dedupeKey: input.dedupeKey ?? existing.dedupeKey,
+        durationMs:
+          input.durationMs !== undefined
+            ? input.durationMs
+            : existing.durationMs,
+        createdAt: levelChanged ? now : existing.createdAt,
       };
 
-      this.clearTimer(existing.id);
       this.items[existingIdx] = updated;
 
-      if (durationMs > 0) {
-        this.scheduleDismiss(existing.id, durationMs);
+      if (levelChanged) {
+        this.clearTimer(existing.id);
+        if (durationMs > 0) {
+          this.scheduleDismiss(existing.id, durationMs);
+        }
       }
 
       this.notify();
@@ -73,6 +88,7 @@ export class MonitorFeedbackStore {
       source: input.source,
       title: input.title,
       message: input.message,
+      dedupeKey: input.dedupeKey,
       createdAt: now,
       dismissible: input.dismissible !== false,
       durationMs,

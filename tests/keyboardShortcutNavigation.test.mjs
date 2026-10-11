@@ -86,28 +86,24 @@ const { ShortcutRegistry } = registryMod;
 console.log('Running Keyboard-First Navigation & Shortcut Registry Test Suite (HARDEN-010)...\n');
 
 // ---------------------------------------------------------------------------
-// Test Group 1: Surface Numbering and Default Bindings 1–6
+// Test Group 1: Surface Numbering and Default Bindings 1–4
 // ---------------------------------------------------------------------------
 {
-  console.log('--- Test Group 1: Surface Numbering & Platform Defaults 1–6 ---');
+  console.log('--- Test Group 1: Surface Numbering & Platform Defaults 1–4 ---');
 
-  assert.strictEqual(ORDERED_APP_COMMANDS.length, 6, 'Must contain exactly 6 commands');
+  assert.strictEqual(ORDERED_APP_COMMANDS.length, 4, 'Must contain exactly 4 commands');
   assert.deepStrictEqual(ORDERED_APP_COMMANDS, [
     'focus-terminal',
     'focus-capture-evidence',
     'focus-changes',
     'focus-verification',
-    'focus-agents',
-    'focus-governance',
   ]);
 
-  assert.strictEqual(ORDERED_MONITOR_VIEWS.length, 5, 'Must contain exactly 5 monitor views');
+  assert.strictEqual(ORDERED_MONITOR_VIEWS.length, 3, 'Must contain exactly 3 monitor views');
   assert.deepStrictEqual(ORDERED_MONITOR_VIEWS, [
     'capture-evidence',
     'changes',
     'verification',
-    'agents',
-    'governance',
   ]);
 
   // Check positions in metadata
@@ -115,26 +111,20 @@ console.log('Running Keyboard-First Navigation & Shortcut Registry Test Suite (H
   assert.strictEqual(APP_COMMAND_METADATA['focus-capture-evidence'].positionNumber, 2);
   assert.strictEqual(APP_COMMAND_METADATA['focus-changes'].positionNumber, 3);
   assert.strictEqual(APP_COMMAND_METADATA['focus-verification'].positionNumber, 4);
-  assert.strictEqual(APP_COMMAND_METADATA['focus-agents'].positionNumber, 5);
-  assert.strictEqual(APP_COMMAND_METADATA['focus-governance'].positionNumber, 6);
 
   // Check macOS defaults
   assert.deepStrictEqual(DEFAULT_SHORTCUTS_MAC['focus-terminal'], { key: '1', meta: true });
   assert.deepStrictEqual(DEFAULT_SHORTCUTS_MAC['focus-capture-evidence'], { key: '2', meta: true });
   assert.deepStrictEqual(DEFAULT_SHORTCUTS_MAC['focus-changes'], { key: '3', meta: true });
   assert.deepStrictEqual(DEFAULT_SHORTCUTS_MAC['focus-verification'], { key: '4', meta: true });
-  assert.deepStrictEqual(DEFAULT_SHORTCUTS_MAC['focus-agents'], { key: '5', meta: true });
-  assert.deepStrictEqual(DEFAULT_SHORTCUTS_MAC['focus-governance'], { key: '6', meta: true });
 
   // Check Windows defaults
   assert.deepStrictEqual(DEFAULT_SHORTCUTS_WIN['focus-terminal'], { key: '1', ctrl: true });
   assert.deepStrictEqual(DEFAULT_SHORTCUTS_WIN['focus-capture-evidence'], { key: '2', ctrl: true });
   assert.deepStrictEqual(DEFAULT_SHORTCUTS_WIN['focus-changes'], { key: '3', ctrl: true });
   assert.deepStrictEqual(DEFAULT_SHORTCUTS_WIN['focus-verification'], { key: '4', ctrl: true });
-  assert.deepStrictEqual(DEFAULT_SHORTCUTS_WIN['focus-agents'], { key: '5', ctrl: true });
-  assert.deepStrictEqual(DEFAULT_SHORTCUTS_WIN['focus-governance'], { key: '6', ctrl: true });
 
-  console.log('✓ 1–6 navigation mapping and platform defaults verified');
+  console.log('✓ 1–4 navigation mapping and platform defaults verified');
 }
 
 // ---------------------------------------------------------------------------
@@ -165,11 +155,11 @@ console.log('Running Keyboard-First Navigation & Shortcut Registry Test Suite (H
   );
   assert.strictEqual(
     macRegistry.findCommandForEvent({ key: '5', metaKey: true, ctrlKey: false, altKey: false, shiftKey: false }),
-    'focus-agents',
+    null,
   );
   assert.strictEqual(
     macRegistry.findCommandForEvent({ key: '6', metaKey: true, ctrlKey: false, altKey: false, shiftKey: false }),
-    'focus-governance',
+    null,
   );
 
   // Position 7 is REMOVED

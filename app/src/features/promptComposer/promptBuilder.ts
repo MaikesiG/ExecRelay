@@ -22,9 +22,6 @@ import type {
   RepositoryAttributionSelectionItem,
   AgentEventSelectionItem,
   UsageSummarySelectionItem,
-  PolicyDecisionSelectionItem,
-  ApprovalRecordSelectionItem,
-  PolicyAuditSelectionItem,
 } from '../evidenceSelection/types';
 
 export function buildDeterministicPrompt(options: BuildPromptOptions): string {
@@ -123,9 +120,21 @@ export function buildDeterministicPrompt(options: BuildPromptOptions): string {
         execLines.push(`Summary: ${exec.structuredSummary}`);
       }
       if (exec.outputSnippet && exec.outputSnippet.trim().length > 0) {
-        execLines.push('```text');
-        execLines.push(exec.outputSnippet.trim());
-        execLines.push('```');
+        const trimmedSnippet = exec.outputSnippet.trim();
+        const backtickMatches = trimmedSnippet.match(/`+/g);
+        let maxBackticks = 0;
+        if (backtickMatches) {
+          for (const m of backtickMatches) {
+            if (m.length > maxBackticks) {
+              maxBackticks = m.length;
+            }
+          }
+        }
+        const fenceLength = Math.max(3, maxBackticks + 1);
+        const fence = '`'.repeat(fenceLength);
+        execLines.push(`${fence}text`);
+        execLines.push(trimmedSnippet);
+        execLines.push(fence);
       }
       execLines.push('');
     }
@@ -218,50 +227,6 @@ export function buildDeterministicPrompt(options: BuildPromptOptions): string {
       usageLines.push('');
     }
     sections.push(usageLines.join('\n').trim());
-  }
-
-  // 8. Policy & Approvals section (if selected)
-  const policyItems = selectedItems.filter(
-    (item): item is PolicyDecisionSelectionItem | ApprovalRecordSelectionItem =>
-      item.kind === 'policy-decision' || item.kind === 'approval-record',
-  );
-
-  if (policyItems.length > 0) {
-    const policyLines: string[] = ['## Policy & Approvals\n'];
-    for (const item of policyItems) {
-      if (item.kind === 'policy-decision') {
-        const actionDesc = item.command ? `\`${item.command}\`` : item.filePath ? `\`${item.filePath}\`` : item.toolName || 'action';
-        policyLines.push(`- Policy Decision [${item.effect.toUpperCase()}]: ${actionDesc} (${item.reason || 'Evaluated by workspace policy'})`);
-      } else {
-        const actionDesc = item.command ? `\`${item.command}\`` : item.filePath ? `\`${item.filePath}\`` : item.toolName || 'action';
-        const actorDesc = item.resolvedByActorId ? ` by ${item.resolvedByActorId}` : '';
-        policyLines.push(`- Approval Record [${item.status.toUpperCase()}]: ${actionDesc}${actorDesc} (${item.reason || item.comment || 'Approval status: ' + item.status})`);
-      }
-    }
-    sections.push(policyLines.join('\n').trim());
-  }
-
-  // 9. Policy & Governance Audit section (if selected)
-  const auditItems = selectedItems.filter(
-    (item): item is PolicyAuditSelectionItem => item.kind === 'policy-audit',
-  );
-
-  if (auditItems.length > 0) {
-    const auditLines: string[] = ['## Policy & Governance\n'];
-    for (const item of auditItems) {
-      const actionDesc = item.command ? `\`${item.command}\`` : item.filePath ? `\`${item.filePath}\`` : 'action';
-      if (item.shellType) auditLines.push(`- Shell: ${item.shellType}`);
-      auditLines.push(`- Coverage: ${item.governanceCoverage}`);
-      auditLines.push(`- Request: ${actionDesc}`);
-      if (item.decision) auditLines.push(`- Decision: ${item.decision}`);
-      if (item.approvalStatus) auditLines.push(`- Resolution: ${item.approvalStatus}`);
-      if (item.warningCodes && item.warningCodes.length > 0) {
-        auditLines.push(`- Warning: ${item.warningCodes.join(', ')}`);
-      }
-      if (item.reason) auditLines.push(`- Reason: ${item.reason}`);
-      auditLines.push('');
-    }
-    sections.push(auditLines.join('\n').trim());
   }
 
   return sections.join('\n\n');

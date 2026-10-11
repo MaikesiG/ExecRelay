@@ -1,7 +1,7 @@
 {
   "name": "execrelay",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.1.2",
   "description": "A local-first AI-native terminal that turns runtime output into safe, structured AI context.",
   "scripts": {
     "dev": "npm --prefix app run dev",

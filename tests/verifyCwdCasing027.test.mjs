@@ -201,25 +201,25 @@ console.log('\n--- Test 2: createVerificationCriterion preserves exact casing --
 // -------------------------------------------------------------
 console.log('\n--- Test 3: resolveVerificationWorkingDirectory & buildVerificationDispatchCommand preserve exact casing ---');
 {
-  const wsRoot = '/Users/xingchiguo/projects/careerneed';
+  const wsRoot = '/Users/example/projects/careerneed';
 
   // Test lowercase
   const resLower = resolveVerificationWorkingDirectory(wsRoot, 'apps/web');
   assert.strictEqual(resLower.ok, true);
-  assert.strictEqual(resLower.resolvedPath, '/Users/xingchiguo/projects/careerneed/apps/web');
+  assert.strictEqual(resLower.resolvedPath, '/Users/example/projects/careerneed/apps/web');
   assert.strictEqual(resLower.relativePath, 'apps/web');
 
   const cmdLower = buildVerificationDispatchCommand('npm run format', resLower.resolvedPath);
-  assert.strictEqual(cmdLower, "(cd '/Users/xingchiguo/projects/careerneed/apps/web' && npm run format)");
+  assert.strictEqual(cmdLower, "(cd '/Users/example/projects/careerneed/apps/web' && npm run format)");
 
   // Test mixed case
   const resMixed = resolveVerificationWorkingDirectory(wsRoot, 'packages/MyApp');
   assert.strictEqual(resMixed.ok, true);
-  assert.strictEqual(resMixed.resolvedPath, '/Users/xingchiguo/projects/careerneed/packages/MyApp');
+  assert.strictEqual(resMixed.resolvedPath, '/Users/example/projects/careerneed/packages/MyApp');
   assert.strictEqual(resMixed.relativePath, 'packages/MyApp');
 
   const cmdMixed = buildVerificationDispatchCommand('dotnet test', resMixed.resolvedPath);
-  assert.strictEqual(cmdMixed, "(cd '/Users/xingchiguo/projects/careerneed/packages/MyApp' && dotnet test)");
+  assert.strictEqual(cmdMixed, "(cd '/Users/example/projects/careerneed/packages/MyApp' && dotnet test)");
 
   console.log('✓ Path resolution and subshell dispatch commands preserve exact casing without lower/uppercasing');
 }

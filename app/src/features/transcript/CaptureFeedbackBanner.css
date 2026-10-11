@@ -17,6 +17,8 @@
 }
 
 .capture-feedback-banner {
+  position: relative;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
   width: 100%;
@@ -173,4 +175,32 @@
 .capture-feedback-banner-dismiss:focus-visible {
   outline: 2px solid var(--accent, #7c8cff);
   outline-offset: 1px;
+}
+
+/* Lifetime Countdown / Progress Bar */
+.capture-feedback-progress-bar {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  height: 2px;
+  width: 100%;
+  transform-origin: left center;
+  animation: feedback-progress-drain var(--feedback-duration, 3000ms) linear forwards;
+  pointer-events: none;
+}
+
+.capture-feedback-banner--success .capture-feedback-progress-bar {
+  background: var(--green, #6ee7b7);
+}
+
+.capture-feedback-banner--warning .capture-feedback-progress-bar {
+  background: #fbbf24;
+}
+
+.capture-feedback-banner--error .capture-feedback-progress-bar {
+  background: #ef4444;
+}
+
+.capture-feedback-banner--info .capture-feedback-progress-bar {
+  background: var(--accent, #7c8cff);
 }

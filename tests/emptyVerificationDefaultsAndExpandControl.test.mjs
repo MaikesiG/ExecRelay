@@ -426,12 +426,12 @@ console.log('\n--- Test 5: Historical VerificationRun Immutability ---');
 }
 
 // -----------------------------------------------------------------------------
-// Test 6: Verify Expand Control Hidden in Public Terminal Edition
+// Test 6: Verify Expand Control Available in Stable Terminal Edition
 // -----------------------------------------------------------------------------
-console.log('\n--- Test 6: Verify Expand Control Hidden in Public Terminal UI ---');
+console.log('\n--- Test 6: Verify Expand Control Available in Stable Terminal UI ---');
 {
   const publicCapabilities = editionConfigMod.getProductCapabilities('terminal');
-  assert.strictEqual(publicCapabilities.agents, false, 'Terminal edition has agents: false');
+  assert.strictEqual('agents' in publicCapabilities, false, 'Terminal edition does not expose an agents capability');
 
   // Render TranscriptCapturePanel in public terminal edition
   const htmlPublic = ReactDOMServer.renderToStaticMarkup(
@@ -461,18 +461,18 @@ console.log('\n--- Test 6: Verify Expand Control Hidden in Public Terminal UI --
     }),
   );
 
-  // Assert expand/enlarge button is NOT rendered in public terminal edition
+  // Focus mode is a stable Monitor control and no longer depends on private capabilities.
   assert.ok(
-    !htmlPublic.includes('monitor-focus-toggle-btn'),
-    'Expand control (monitor-focus-toggle-btn) must NOT be rendered in public Terminal UI',
+    htmlPublic.includes('monitor-focus-toggle-btn'),
+    'Expand control (monitor-focus-toggle-btn) must be rendered in stable Terminal UI',
   );
   assert.ok(
-    !htmlPublic.includes('Focus Monitor'),
-    'Focus Monitor tooltip/aria-label must NOT be rendered in public Terminal UI',
+    htmlPublic.includes('Focus Monitor'),
+    'Focus Monitor tooltip/aria-label must be rendered in stable Terminal UI',
   );
   assert.ok(
-    !htmlPublic.includes('⤢'),
-    'Expand symbol ⤢ must NOT be rendered in public Terminal UI',
+    htmlPublic.includes('⤢'),
+    'Expand symbol ⤢ must be rendered in stable Terminal UI',
   );
 
   // Assert Verify tab is present and aligned
@@ -480,7 +480,7 @@ console.log('\n--- Test 6: Verify Expand Control Hidden in Public Terminal UI --
   assert.ok(htmlPublic.includes('Changes'), 'Changes tab is properly rendered');
   assert.ok(htmlPublic.includes('Capture'), 'Capture tab is properly rendered');
 
-  console.log('✓ Verify expand control is strictly omitted from public Terminal edition with clean tab alignment');
+  console.log('✓ Verify expand control remains available without a private capability dependency');
 }
 
 console.log('\n=============================================================');

@@ -40,7 +40,7 @@ function renderTerminalTab(tab, activeTabId) {
     height: '28px',
     borderRadius: '6px',
     hasTopAccentHighlight: true,
-    accentColorToken: 'var(--terminal-tab-accent, var(--green, #34d399))',
+    accentColorToken: 'var(--terminal-tab-identity-color, var(--terminal-tab-accent))',
     bodyBackground: isActive ? 'rgba(255, 255, 255, 0.08)' : 'rgba(255, 255, 255, 0.03)',
     children: [
       {
@@ -144,17 +144,17 @@ console.log('Running Unified Tab and Close Button Styling Tests...\n');
 }
 
 // ---------------------------------------------------------------------------
-// Test 2: Terminal tab green accent
+// Test 2: Terminal tab identity accent
 // ---------------------------------------------------------------------------
 {
-  console.log('\n--- Test 2: Terminal tab green accent ---');
+  console.log('\n--- Test 2: Terminal tab identity accent ---');
   const activeTab = renderTerminalTab({ id: 'tab-1', label: 'Term 1' }, 'tab-1');
 
-  // Top highlight is green
+  // Top highlight follows the tab's stable identity color.
   assert.strictEqual(activeTab.hasTopAccentHighlight, true, 'Active tab has top accent highlight');
   assert.ok(
-    activeTab.accentColorToken.includes('green') || activeTab.accentColorToken.includes('terminal-tab-accent'),
-    'Accent color token references green/color-success'
+    activeTab.accentColorToken.includes('terminal-tab-identity-color'),
+    'Accent color token references the terminal tab identity color'
   );
 
   // Body is not fully green-filled (translucent neutral surface, not solid green)
@@ -165,7 +165,7 @@ console.log('Running Unified Tab and Close Button Styling Tests...\n');
   );
   assert.strictEqual(activeTab.bodyBackground, 'rgba(255, 255, 255, 0.08)');
 
-  console.log('✓ Active terminal tab uses subtle green top accent highlight and neutral body fill');
+  console.log('✓ Active terminal tab uses its identity-colored top accent and neutral body fill');
 }
 
 // ---------------------------------------------------------------------------

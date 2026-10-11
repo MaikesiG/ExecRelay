@@ -5,17 +5,27 @@
  * while converting CRLF/CR to LF and preserving newlines (\n) and tabs (\t).
  */
 export function stripAnsiAndControl(text: string): string {
-  // 1. Convert CRLF and CR to LF
-  const lf = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
-  // 2. Strip OSC escape sequences: ESC ] ... (BEL or ESC \)
-  let clean = lf.replace(/\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g, '');
-  // 3. Strip CSI escape sequences: ESC [ ... [command byte]
+  if (!text) return '';
+  // 1. Strip Zsh PROMPT_EOL_MARK sequences if present
+  let clean = text.replace(
+    /(?:\x1b\[[0-9;]*m)*\x1b\[[0-9;]*(?:7m|7;[0-9;]*m)[%#](?:\x1b\[[0-9;]*27m|\x1b\[[0-9;]*0m)(?:\x1b\[[0-9;]*m)*[ ]*(?:\r[ ]*\r|\r\n|\r|\n)*/g,
+    '',
+  );
+  clean = clean.replace(
+    /(?:^|\n)[%#][ ]{10,}(?:\r[ ]*\r|\r\n|\r|\n)*$/g,
+    '',
+  );
+  // 2. Convert CRLF and CR to LF
+  clean = clean.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+  // 3. Strip OSC escape sequences: ESC ] ... (BEL or ESC \)
+  clean = clean.replace(/\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g, '');
+  // 4. Strip CSI escape sequences: ESC [ ... [command byte]
   clean = clean.replace(/\x1b\[[0-9:;<=>?]*[ -/]*[@-~]/g, '');
-  // 4. Strip 2-character escape sequences: ESC followed by standard byte (0x40-0x5F)
+  // 5. Strip 2-character escape sequences: ESC followed by standard byte (0x40-0x5F)
   clean = clean.replace(/\x1b[@-Z\\-_]/g, '');
-  // 5. Strip any lingering ESC characters
+  // 6. Strip any lingering ESC characters
   clean = clean.replace(/\x1b/g, '');
-  // 6. Strip control characters except newline (\n = 0x0A) and tab (\t = 0x09)
+  // 7. Strip control characters except newline (\n = 0x0A) and tab (\t = 0x09)
   clean = clean.replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g, '');
   return clean;
 }

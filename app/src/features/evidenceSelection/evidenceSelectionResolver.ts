@@ -19,9 +19,6 @@ import type {
   ExecutionSelectionItem,
   VerificationResultSelectionItem,
   AgentEventSelectionItem,
-  PolicyDecisionSelectionItem,
-  ApprovalRecordSelectionItem,
-  PolicyAuditSelectionItem,
   StructuredEvidenceSelectionItem,
   UsageSummarySelectionItem,
   RepositoryAttributionSelectionItem,
@@ -32,7 +29,6 @@ import type {
   ResolvedRepositoryChangeEvidence,
   ResolvedVerificationEvidence,
   ResolvedAgentEventEvidence,
-  ResolvedPolicyEvidence,
   ResolvedStructuredEvidence,
   ResolvedUsageEvidence,
   ResolvedAttributionEvidence,
@@ -98,7 +94,9 @@ export function resolveExecutionItem(
       startedAt: block.startedAt,
       completedAt: block.completedAt,
       duration,
-      output: cleaned.cleanedText || block.output,
+      output: block.output
+        ? (cleaned.hasSubstantiveOutput !== false ? cleaned.cleanedText : '')
+        : '',
       rawOutput: block.rawOutput,
       errorOutput: block.errorOutput,
       hasDiagnosticError: block.hasDiagnosticError || block.hasError,
@@ -385,81 +383,6 @@ export function resolveAgentEventItem(
 }
 
 /**
- * Resolves a PolicyDecisionSelectionItem.
- */
-export function resolvePolicyDecisionItem(
-  item: PolicyDecisionSelectionItem,
-): ResolvedPolicyEvidence {
-  return {
-    kind: 'policy',
-    id: item.id,
-    subkind: 'decision',
-    actionRequestId: item.actionRequestId,
-    effect: item.effect,
-    command: item.command,
-    filePath: item.filePath,
-    toolName: item.toolName,
-    reason: item.reason,
-    requesterType: item.requesterType,
-    agentRunId: item.agentRunId,
-    governanceCoverage: item.governanceCoverage,
-    shellType: item.shellType,
-    warningCodes: item.warningCodes,
-    selectedAt: item.selectedAt,
-  };
-}
-
-/**
- * Resolves an ApprovalRecordSelectionItem.
- */
-export function resolveApprovalRecordItem(
-  item: ApprovalRecordSelectionItem,
-): ResolvedPolicyEvidence {
-  return {
-    kind: 'policy',
-    id: item.id,
-    subkind: 'approval',
-    actionRequestId: item.actionRequestId,
-    status: item.status,
-    command: item.command,
-    filePath: item.filePath,
-    toolName: item.toolName,
-    reason: item.reason,
-    resolvedByActorId: item.resolvedByActorId,
-    comment: item.comment,
-    agentRunId: item.agentRunId,
-    governanceCoverage: item.governanceCoverage,
-    shellType: item.shellType,
-    warningCodes: item.warningCodes,
-    selectedAt: item.selectedAt,
-  };
-}
-
-/**
- * Resolves a PolicyAuditSelectionItem.
- */
-export function resolvePolicyAuditItem(
-  item: PolicyAuditSelectionItem,
-): ResolvedPolicyEvidence {
-  return {
-    kind: 'policy',
-    id: item.id,
-    subkind: 'audit',
-    actionRequestId: item.actionRequestId,
-    governanceCoverage: item.governanceCoverage,
-    command: item.command,
-    filePath: item.filePath,
-    shellType: item.shellType,
-    decision: item.decision,
-    approvalStatus: item.approvalStatus,
-    warningCodes: item.warningCodes,
-    reason: item.reason,
-    timestamp: item.timestamp,
-    selectedAt: item.selectedAt,
-  };
-}
-
-/**
  * Resolves a StructuredEvidenceSelectionItem.
  */
 export function resolveStructuredEvidenceItem(
@@ -555,12 +478,6 @@ export async function resolveEvidenceSelection(
       return resolveVerificationItem(item, context, allSelectedKeys);
     case 'agent-event':
       return resolveAgentEventItem(item, context);
-    case 'policy-decision':
-      return resolvePolicyDecisionItem(item);
-    case 'approval-record':
-      return resolveApprovalRecordItem(item);
-    case 'policy-audit':
-      return resolvePolicyAuditItem(item);
     case 'structured-evidence':
       return resolveStructuredEvidenceItem(item, context);
     case 'usage-summary':

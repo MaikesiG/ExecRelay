@@ -7,6 +7,12 @@
 :root {
   --workspace-tab-accent: var(--accent, #7c8cff);
   --terminal-tab-accent: var(--color-success, var(--green, #34d399));
+  --terminal-tab-color-emerald: var(--green, #34d399);
+  --terminal-tab-color-blue: #60a5fa;
+  --terminal-tab-color-violet: #a78bfa;
+  --terminal-tab-color-amber: #fbbf24;
+  --terminal-tab-color-cyan: #22d3ee;
+  --terminal-tab-color-rose: #fb7185;
 }
 
 .workspace-tabs,
@@ -22,6 +28,7 @@
   background: #080d17;
   overflow: hidden;
   user-select: none;
+  -webkit-user-select: none;
   flex-shrink: 0;
 }
 
@@ -61,6 +68,10 @@
   padding: 0 4px 0 10px;
   min-width: 0;
   outline: none;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-user-drag: none;
 }
 
 .workspace-tab-activator:focus-visible {
@@ -69,12 +80,13 @@
   border-radius: 4px;
 }
 
-.workspace-tab-status-lights {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
+.capture-target-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
   flex-shrink: 0;
-  pointer-events: none;
+  background-color: var(--terminal-tab-identity-color);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
 }
 
 .workspace-tab-status-dot {
@@ -178,6 +190,48 @@
   flex-shrink: 0;
 }
 
+.workspace-tab-reset-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--monitor-icon-button-size, 28px);
+  min-width: var(--monitor-icon-button-size, 28px);
+  max-width: var(--monitor-icon-button-size, 28px);
+  height: var(--monitor-icon-button-size, 28px);
+  min-height: var(--monitor-icon-button-size, 28px);
+  max-height: var(--monitor-icon-button-size, 28px);
+  padding: 0;
+  border: 1px solid rgba(239, 68, 68, 0.25);
+  border-radius: var(--monitor-control-radius, 6px);
+  background: rgba(239, 68, 68, 0.06);
+  color: #fca5a5;
+  cursor: pointer;
+  outline: none;
+  transition: all 120ms ease;
+  box-sizing: border-box;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.workspace-tab-reset-btn:hover:not(:disabled) {
+  background: rgba(239, 68, 68, 0.16);
+  color: #ffffff;
+  border-color: rgba(239, 68, 68, 0.45);
+}
+
+.workspace-tab-reset-btn:focus-visible {
+  outline: 2px solid #ef4444;
+  outline-offset: 1px;
+}
+
+.workspace-tab-reset-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+  border-color: rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.02);
+  color: var(--muted, #8b9bb8);
+}
+
 .workspace-tab-shortcuts-btn,
 .workspace-tab-capture-toggle {
   display: inline-flex;
@@ -218,4 +272,36 @@
 .workspace-tab-capture-toggle[aria-pressed="true"],
 .workspace-tab-capture-toggle[data-state="open"] {
   color: var(--accent, #7c8cff);
+}
+
+/* Drag-to-reorder feedback */
+.terminal-tab--dragging,
+.workspace-tab--dragging {
+  opacity: 0.55;
+  cursor: grabbing;
+}
+
+.terminal-tab--drop-before::after,
+.terminal-tab--drop-after::after,
+.workspace-tab--drop-before::after,
+.workspace-tab--drop-after::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  width: 2px;
+  border-radius: 2px;
+  background: var(--terminal-tab-accent, var(--green, #34d399));
+  pointer-events: none;
+  z-index: 2;
+}
+
+.terminal-tab--drop-before::after,
+.workspace-tab--drop-before::after {
+  left: 0;
+}
+
+.terminal-tab--drop-after::after,
+.workspace-tab--drop-after::after {
+  right: 0;
 }

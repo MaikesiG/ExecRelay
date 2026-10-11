@@ -18,12 +18,6 @@ export interface ProductCapabilities {
   readonly capture: boolean;
   readonly changes: boolean;
   readonly verification: boolean;
-
-  // Deferred / Internal Surfaces
-  readonly agents: boolean;
-  readonly governance: boolean;
-  readonly organization: boolean;
-  readonly analytics: boolean;
 }
 
 export interface EditionConfig {

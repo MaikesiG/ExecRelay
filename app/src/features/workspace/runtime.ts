@@ -8,6 +8,12 @@
 
 import type { LogicalWorkspaceId, TerminalTabId, TerminalPaneId } from './types';
 import type { CaptureBatch, TranscriptBlock } from '../transcript/types';
+import { StreamingTranscriptSanitizer } from '../transcript/transcriptSanitization';
+import type {
+  PendingExecutionInput,
+  ShellLifecycleState,
+} from '../terminal/commandBoundaryReconciler';
+import { resetCommandBoundaryRuntime } from '../terminal/commandBoundaryReconciler';
 
 export interface ActiveBlockParser {
   command: string;
@@ -45,8 +51,11 @@ export interface PaneCaptureRuntime {
   activeBlockParser: ActiveBlockParser | null;
 
   inputBuffer: string;
+  shellLifecycleState: ShellLifecycleState;
+  pendingExecutionInput: PendingExecutionInput | null;
   flushTimer: number | null;
   textDecoder: TextDecoder;
+  sanitizer: StreamingTranscriptSanitizer;
 
   blocks: TranscriptBlock[];
 }
@@ -74,8 +83,11 @@ export function createPaneCaptureRuntime(
     activeBlockId: null,
     activeBlockParser: null,
     inputBuffer: '',
+    shellLifecycleState: 'initializing',
+    pendingExecutionInput: null,
     flushTimer: null,
     textDecoder: new TextDecoder(),
+    sanitizer: new StreamingTranscriptSanitizer(),
     blocks: [],
   };
 }
@@ -101,7 +113,8 @@ export function cleanupPaneCaptureRuntime(runtime: PaneCaptureRuntime): void {
   }
   runtime.activeBlockId = null;
   runtime.activeBlockParser = null;
-  runtime.inputBuffer = '';
+  runtime.sanitizer?.reset();
+  resetCommandBoundaryRuntime(runtime);
 }
 
 export const cleanupTerminalPaneRuntime = cleanupPaneCaptureRuntime;

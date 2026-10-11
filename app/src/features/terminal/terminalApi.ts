@@ -29,6 +29,7 @@ export const TERMINAL_COMMANDS = {
   CLOSE: 'terminal_close_session',
   INFO: 'terminal_session_info',
   LIST: 'terminal_list_sessions',
+  DEBUG_TRACE: 'terminal_debug_trace',
 } as const;
 
 /**
@@ -58,6 +59,17 @@ export interface TerminalApiContract {
   onOutput(callback: (event: TerminalOutputEvent) => void): Promise<() => void>;
   onExit(callback: (event: TerminalExitEvent) => void): Promise<() => void>;
   onError(callback: (event: TerminalErrorEvent) => void): Promise<() => void>;
+  debugTrace(input: {
+    event: string;
+    state?: string;
+    shell?: string;
+    integrationAvailable?: boolean;
+    markerKind?: string;
+    nonceValid?: boolean;
+    commandPayloadPresent?: boolean;
+    commandPayloadLength?: number;
+    authority?: string;
+  }): Promise<void>;
 }
 
 /**
@@ -204,6 +216,36 @@ export async function onError(
   });
 }
 
+export async function debugTrace(input: {
+  event: string;
+  state?: string;
+  shell?: string;
+  integrationAvailable?: boolean;
+  markerKind?: string;
+  nonceValid?: boolean;
+  commandPayloadPresent?: boolean;
+  commandPayloadLength?: number;
+  authority?: string;
+}): Promise<void> {
+  try {
+    const proc = (globalThis as unknown as { process?: { env?: Record<string, string> } }).process;
+    if (proc?.env?.NODE_ENV === 'test') return;
+    await invoke<void>(TERMINAL_COMMANDS.DEBUG_TRACE, {
+      event: input.event,
+      state: input.state ?? null,
+      shell: input.shell ?? null,
+      integrationAvailable: input.integrationAvailable ?? null,
+      markerKind: input.markerKind ?? null,
+      nonceValid: input.nonceValid ?? null,
+      commandPayloadPresent: input.commandPayloadPresent ?? null,
+      commandPayloadLength: input.commandPayloadLength ?? null,
+      authority: input.authority ?? null,
+    });
+  } catch {
+    // Non-blocking dev diagnostic
+  }
+}
+
 /**
  * Exported terminal API client namespace.
  */
@@ -218,4 +260,5 @@ export const terminalApi: TerminalApiContract = {
   onOutput,
   onExit,
   onError,
+  debugTrace,
 };

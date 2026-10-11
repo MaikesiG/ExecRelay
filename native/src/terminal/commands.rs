@@ -118,12 +118,19 @@ pub fn spawn_output_reader(
     mut reader: Box<dyn Read + Send>,
     app_handle: tauri::AppHandle,
     exit_guard: Arc<AtomicBool>,
+    expected_nonce: Option<String>,
 ) -> Result<()> {
     let thread_name = format!("pty-reader-{}", &session_id);
     std::thread::Builder::new()
         .name(thread_name)
         .spawn(move || {
-            run_reader_loop(&session_id, &mut *reader, &app_handle, &exit_guard);
+            run_reader_loop(
+                &session_id,
+                &mut *reader,
+                &app_handle,
+                &exit_guard,
+                expected_nonce.as_deref(),
+            );
         })
         .map_err(|e| TerminalError::ReaderSetupFailed(e.to_string()))?;
 
@@ -136,14 +143,23 @@ fn run_reader_loop(
     reader: &mut (dyn Read + Send),
     app_handle: &tauri::AppHandle,
     exit_guard: &Arc<AtomicBool>,
+    expected_nonce: Option<&str>,
 ) {
     use tauri::Emitter;
     let mut buffer = [0u8; PTY_READ_BUFFER_BYTES];
+    #[cfg(debug_assertions)]
+    let mut marker_buffer = Vec::new();
 
     loop {
         let res = reader.read(&mut buffer);
         match classify_read_result(&res) {
             ReaderReadResult::Bytes(n) => {
+                #[cfg(debug_assertions)]
+                trace_dev_shell_markers(
+                    &buffer[..n],
+                    expected_nonce,
+                    &mut marker_buffer,
+                );
                 let event_payload = TerminalOutputEvent {
                     session_id: session_id.to_string(),
                     data: buffer[..n].to_vec(),
@@ -194,6 +210,61 @@ fn run_reader_loop(
     }
 }
 
+#[cfg(debug_assertions)]
+fn trace_dev_shell_markers(
+    chunk: &[u8],
+    expected_nonce: Option<&str>,
+    pending: &mut Vec<u8>,
+) {
+    const PREFIX: &[u8] = b"\x1b]133;";
+    const PRINTF_COMMAND_B64: &str =
+        "cHJpbnRmICclc1xuJyBcCiAgIm9uZSIgXAogICJ0d28iIFwKICAidGhyZWUi";
+    const PIPELINE_COMMAND_B64: &str =
+        "cHJpbnRmICdjXG5hXG5iXG4nIHwKc29ydCB8CmhlYWQgLW4gMg==";
+
+    pending.extend_from_slice(chunk);
+    while let Some(start) = pending.windows(PREFIX.len()).position(|w| w == PREFIX) {
+        let marker_start = start + PREFIX.len();
+        let Some(relative_end) = pending[marker_start..].iter().position(|byte| *byte == 0x07)
+        else {
+            if start > 0 {
+                pending.drain(..start);
+            }
+            return;
+        };
+        let end = marker_start + relative_end;
+        let payload = String::from_utf8_lossy(&pending[marker_start..end]);
+        let kind = payload.split(';').next().unwrap_or("?");
+        let nonce_valid = expected_nonce.is_some_and(|nonce| {
+            payload
+                .split(';')
+                .any(|part| part == format!("aid={nonce}"))
+        });
+        let command_payload = payload
+            .split(';')
+            .find_map(|part| part.strip_prefix("cmd="));
+        let synthetic = match command_payload {
+            Some(PRINTF_COMMAND_B64) => "multiline-printf",
+            Some(PIPELINE_COMMAND_B64) => "pipeline",
+            _ => "none",
+        };
+        eprintln!(
+            "[ExecRelay shell] event=pty-marker kind={} nonceValid={} commandPayloadPresent={} commandPayloadLength={} synthetic={}",
+            kind,
+            nonce_valid,
+            command_payload.is_some(),
+            command_payload.map(str::len).unwrap_or(0),
+            synthetic,
+        );
+        pending.drain(..=end);
+    }
+
+    if pending.len() > 4096 {
+        let keep_from = pending.len() - PREFIX.len().min(pending.len());
+        pending.drain(..keep_from);
+    }
+}
+
 /* ========================================================================== */
 /* Tauri IPC Commands                                                         */
 /* ========================================================================== */
@@ -229,7 +300,13 @@ pub fn terminal_create_session(
         }
     };
 
-    if let Err(err) = spawn_output_reader(session_id.clone(), reader, app_handle, exit_guard) {
+    if let Err(err) = spawn_output_reader(
+        session_id.clone(),
+        reader,
+        app_handle,
+        exit_guard,
+        session_info.integration_nonce.clone(),
+    ) {
         let _ = manager.close(CloseTerminalSessionInput {
             session_id: session_id.clone(),
         });
@@ -256,6 +333,58 @@ pub fn terminal_write(
     let bytes = target_payload.as_bytes();
     validate_write_payload(bytes)?;
     manager.write_bytes(&target_id, bytes)
+}
+
+#[tauri::command]
+pub fn terminal_debug_trace(
+    event: String,
+    state: Option<String>,
+    shell: Option<String>,
+    integration_available: Option<bool>,
+    marker_kind: Option<String>,
+    nonce_valid: Option<bool>,
+    command_payload_present: Option<bool>,
+    command_payload_length: Option<usize>,
+    authority: Option<String>,
+) {
+    #[cfg(debug_assertions)]
+    eprintln!(
+        "[ExecRelay frontend] event={} state={} shell={} integrationAvailable={} markerKind={} nonceValid={} commandPayloadPresent={} commandPayloadLength={} authority={}",
+        event,
+        state.as_deref().unwrap_or("<none>"),
+        shell.as_deref().unwrap_or("<none>"),
+        integration_available
+            .map(|value| value.to_string())
+            .as_deref()
+            .unwrap_or("<none>"),
+        marker_kind.as_deref().unwrap_or("<none>"),
+        nonce_valid
+            .map(|value| value.to_string())
+            .as_deref()
+            .unwrap_or("<none>"),
+        command_payload_present
+            .map(|value| value.to_string())
+            .as_deref()
+            .unwrap_or("<none>"),
+        command_payload_length
+            .map(|value| value.to_string())
+            .as_deref()
+            .unwrap_or("<none>"),
+        authority.as_deref().unwrap_or("<none>"),
+    );
+
+    #[cfg(not(debug_assertions))]
+    let _ = (
+        event,
+        state,
+        shell,
+        integration_available,
+        marker_kind,
+        nonce_valid,
+        command_payload_present,
+        command_payload_length,
+        authority,
+    );
 }
 
 /// Resizes a terminal session's PTY window dimensions.

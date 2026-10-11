@@ -74,6 +74,13 @@ export type ExecutionLifecycle =
  */
 export type ExecutionOutcome = 'unknown' | 'succeeded' | 'failed';
 
+export type AgentExecutionLinkSource =
+  | 'structured-agent-event'
+  | 'dedicated-agent-pane'
+  | 'temporal-correlation'
+  | 'manual'
+  | 'unknown';
+
 /**
  * Execution Completion Source records WHY an execution was considered finished or interrupted.
  */
@@ -227,7 +234,7 @@ export interface Execution {
   /**
    * Association provenance explaining how this execution was linked to the agent run.
    */
-  agentExecutionLinkSource?: string;
+  agentExecutionLinkSource?: AgentExecutionLinkSource;
 
   /**
    * Derived structured engineering evidence (test summaries, diagnostics, build summaries).

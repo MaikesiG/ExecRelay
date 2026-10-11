@@ -121,7 +121,7 @@ export type TranscriptBlock = {
   structuredEvidence?: import('../structuredEvidence/types').StructuredEngineeringEvidence[];
   attributionId?: string;
   agentRunId?: string;
-  agentExecutionLinkSource?: string;
+  agentExecutionLinkSource?: import('../execution/types').AgentExecutionLinkSource;
   actionRequestId?: string;
   policyDecisionId?: string;
   approvalRecordId?: string;
@@ -186,6 +186,7 @@ export type CaptureBatch = {
 export interface TranscriptFeedback {
   message: string;
   type: 'success' | 'error';
+  dedupeKey?: string;
 }
 
 export type CaptureStatus = 'ready' | 'capturing' | 'paused' | 'error';

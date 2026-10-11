@@ -815,7 +815,7 @@ console.log('\n--- Test 18: Monitor view switching is lifecycle-neutral ---');
   const runningRun = { ...runA, status: 'running' };
   ws = appendVerificationRunToWorkspace(ws, runningRun);
 
-  const views = ['verification', 'agents', 'changes', 'capture-evidence', 'verification'];
+  const views = ['verification', 'changes', 'capture-evidence', 'verification'];
   let activeRun = getActiveVerificationRun(ws);
 
   for (const view of views) {
@@ -823,7 +823,7 @@ console.log('\n--- Test 18: Monitor view switching is lifecycle-neutral ---');
     assert.strictEqual(activeRun?.id, runA.id, `Active run must survive navigation to ${view}`);
   }
 
-  console.log('✓ Monitor view switching (Verify -> Agents -> Changes -> Capture -> Verify) is lifecycle-neutral');
+  console.log('✓ Monitor view switching (Verify -> Changes -> Capture -> Verify) is lifecycle-neutral');
 }
 
 // ============================================================================

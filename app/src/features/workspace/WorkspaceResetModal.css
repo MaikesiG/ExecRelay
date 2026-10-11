@@ -1,0 +1,124 @@
+/**
+ * WorkspaceResetModal styles
+ *
+ * Refined desktop-native confirmation dialog for workspace reset.
+ */
+
+.workspace-reset-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.68);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  backdrop-filter: blur(4px);
+}
+
+.workspace-reset-modal {
+  width: 100%;
+  max-width: 420px;
+  background: #0e1524;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  padding: 18px 20px 16px;
+  box-shadow: 0 20px 48px -8px rgba(0, 0, 0, 0.75), 0 0 0 1px rgba(255, 255, 255, 0.03);
+  color: var(--text, #e2e8f0);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.workspace-reset-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: #f8fafc;
+  letter-spacing: -0.01em;
+  line-height: 1.3;
+}
+
+.workspace-reset-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.workspace-reset-subtext {
+  margin: 0;
+  font-size: 12px;
+  color: #cbd5e1;
+  line-height: 1.45;
+}
+
+.workspace-reset-preserved-text {
+  margin: 0;
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: #94a3b8;
+}
+
+.workspace-reset-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 6px;
+  padding-top: 2px;
+}
+
+.workspace-reset-cancel-btn {
+  height: 28px;
+  padding: 0 12px;
+  font-size: 12px;
+  font-weight: 500;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #cbd5e1;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background-color 140ms ease, border-color 140ms ease, color 140ms ease, box-shadow 140ms ease;
+}
+
+.workspace-reset-cancel-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.09);
+  border-color: rgba(255, 255, 255, 0.18);
+  color: #f1f5f9;
+}
+
+.workspace-reset-cancel-btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px #0e1524, 0 0 0 4px rgba(148, 163, 184, 0.45);
+}
+
+.workspace-reset-confirm-btn {
+  height: 28px;
+  padding: 0 12px;
+  font-size: 12px;
+  font-weight: 500;
+  border-radius: 6px;
+  background: #7f1d1d;
+  border: 1px solid rgba(252, 165, 165, 0.25);
+  color: #fee2e2;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background-color 140ms ease, border-color 140ms ease, color 140ms ease, box-shadow 140ms ease;
+}
+
+.workspace-reset-confirm-btn:hover:not(:disabled) {
+  background: #991b1b;
+  border-color: rgba(252, 165, 165, 0.45);
+  color: #ffffff;
+}
+
+.workspace-reset-confirm-btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px #0e1524, 0 0 0 4px rgba(248, 113, 113, 0.55);
+}

@@ -17,6 +17,7 @@ import {
   ShellIntegrationStreamParser,
   type ShellIntegrationEvent,
 } from './shellIntegration';
+import type { ShellLifecycleState } from './commandBoundaryReconciler';
 import type {
   SessionId,
   ShellKind,
@@ -72,6 +73,7 @@ export class TerminalRuntime {
   public readonly terminal: Terminal;
   public readonly fitAddon: FitAddon;
   public readonly shellParser: ShellIntegrationStreamParser;
+  public shellLifecycleState: ShellLifecycleState = 'initializing';
 
   public hostElement: HTMLElement | null = null;
   private resizeObserver: ResizeObserver | null = null;
@@ -235,7 +237,11 @@ export class TerminalRuntime {
 
     // onData -> stdin
     this.dataDisposable = this.terminal.onData((data: string) => {
-      this.onTerminalInput?.(data);
+      try {
+        this.onTerminalInput?.(data);
+      } catch (err) {
+        console.warn('[TerminalRuntime] onTerminalInput failed safely:', err);
+      }
 
       const currentSessionId = this.sessionId;
       if (!currentSessionId || this.status !== 'running' || this.isDisposed) {
@@ -251,7 +257,8 @@ export class TerminalRuntime {
         .catch((err) => {
           if (!this.isDisposed) {
             const msg = err instanceof Error ? err.message : String(err);
-            this.updateStatus('error', null, `Write failed: ${msg}`);
+            this.errorMessage = `Write failed: ${msg}`;
+            this.onStatusChange?.(this.status, this.sessionInfo, this.errorMessage);
           }
         });
     });
@@ -290,11 +297,19 @@ export class TerminalRuntime {
     info: TerminalSessionInfo | null,
     err: string | null,
   ): void {
+    if (
+      this.status === newStatus &&
+      this.errorMessage === err &&
+      (!info || this.sessionInfo === info)
+    ) {
+      return;
+    }
+    const previousStatus = this.status;
     this.status = newStatus;
     if (info) this.sessionInfo = info;
     this.errorMessage = err;
     this.onStatusChange?.(newStatus, info, err);
-    if (newStatus === 'exited' || newStatus === 'error') {
+    if ((newStatus === 'exited' || newStatus === 'error') && previousStatus !== newStatus) {
       this.onSessionEnded?.(newStatus, err);
     }
   }
@@ -303,7 +318,27 @@ export class TerminalRuntime {
     if (this.isDisposed) return;
     const rawBytes = new Uint8Array(data);
     const rawText = this.textDecoder.decode(rawBytes, { stream: true });
-    const { cleanText, events } = this.shellParser.parse(rawText);
+    let cleanText: string;
+    let events: ShellIntegrationEvent[];
+    let orderedParts:
+      | { cleanText: string; events: ShellIntegrationEvent[] }[]
+      | undefined;
+
+    try {
+      const parsed = this.shellParser.parse(rawText);
+      cleanText = parsed.cleanText;
+      events = parsed.events;
+      orderedParts = parsed.orderedParts;
+      if (events.some((event) => event.trust === 'trusted')) {
+        this.shellLifecycleState = 'trusted';
+      }
+    } catch (parseErr) {
+      console.warn('[TerminalRuntime] shellParser.parse failed safely:', parseErr);
+      cleanText = rawText;
+      events = [];
+      orderedParts = undefined;
+    }
+
     const bytes =
       cleanText === rawText
         ? rawBytes
@@ -343,7 +378,17 @@ export class TerminalRuntime {
       }
     });
     try {
-      this.onTerminalOutput?.(bytes, events, cleanText);
+      if (orderedParts && orderedParts.length > 0) {
+        for (const part of orderedParts) {
+          this.onTerminalOutput?.(
+            this.textEncoder.encode(part.cleanText),
+            part.events,
+            part.cleanText,
+          );
+        }
+      } else {
+        this.onTerminalOutput?.(bytes, events, cleanText);
+      }
     } catch (err) {
       console.warn('[TerminalRuntime] onTerminalOutput failed safely:', err);
     }
@@ -359,9 +404,14 @@ export class TerminalRuntime {
     const earlyOutputBuffer = new Map<string, number[][]>();
     const earlyExitEvents = new Map<string, TerminalExitEvent>();
 
+    const creationToken = this.registry ? this.registry.beginCreation() : null;
+
     try {
       if (this.registry) {
         await this.registry.ensureGlobalListeners();
+        if (!this.registry.areGlobalListenersInitialized()) {
+          throw new Error('Terminal streaming listeners failed to initialize');
+        }
       } else {
         this.unlistenOutput = await terminalApi.onOutput((event) => {
           if (this.isDisposed) return;
@@ -430,14 +480,23 @@ export class TerminalRuntime {
       this.initPromise = createPromise.then((info) => {
         this.sessionId = info.sessionId;
         this.sessionInfo = info;
+        if (this.registry && creationToken) {
+          this.registry.confirmCreation(creationToken, info.sessionId);
+        } else if (this.registry) {
+          this.registry.markPendingSession(info.sessionId);
+        }
         return info;
       });
 
       const sessionInfo = await this.initPromise;
 
       if (this.isDisposed || !sessionInfo) {
+        if (creationToken && this.registry) {
+          this.registry.cancelCreation(creationToken);
+        }
         if (sessionInfo) {
           if (this.registry) {
+            this.registry.clearPendingSession(sessionInfo.sessionId);
             this.registry.unbindSession(sessionInfo.sessionId);
           }
           terminalApi
@@ -453,13 +512,14 @@ export class TerminalRuntime {
       const createdId = sessionInfo.sessionId;
       this.sessionId = createdId;
       this.sessionInfo = sessionInfo;
+      this.shellLifecycleState = sessionInfo.shellIntegrationAvailable
+        ? 'initializing'
+        : 'fallback';
       this.onDimensionsChange?.(cols, rows);
 
       if (this.registry) {
         this.registry.bindSession(createdId, this);
       }
-
-
 
       if (!this.registry) {
         // Flush early output buffer ONLY for this session
@@ -490,6 +550,12 @@ export class TerminalRuntime {
       }
       return sessionInfo;
     } catch (err) {
+      if (creationToken && this.registry) {
+        this.registry.cancelCreation(creationToken);
+      }
+      if (this.sessionId && this.registry) {
+        this.registry.clearPendingSession(this.sessionId);
+      }
       if (!this.isDisposed) {
         const msg = err instanceof Error ? err.message : String(err);
         this.updateStatus('error', null, `Failed to initialize session: ${msg}`);
@@ -632,7 +698,8 @@ export class TerminalRuntime {
           .catch((err) => {
             if (!this.isDisposed) {
               const msg = err instanceof Error ? err.message : String(err);
-              this.updateStatus('error', null, `Resize failed: ${msg}`);
+              this.errorMessage = `Resize failed: ${msg}`;
+              this.onStatusChange?.(this.status, this.sessionInfo, this.errorMessage);
             }
           });
       }
@@ -668,7 +735,6 @@ export class TerminalRuntime {
       if (this.registry) {
         this.registry.unbindSession(idToClose);
       }
-
       terminalApi
         .closeSession({ sessionId: idToClose })
         .catch((err) => {
@@ -696,6 +762,9 @@ export class TerminalRuntime {
 export class TerminalRuntimeRegistry {
   private runtimes = new Map<string, TerminalRuntime>();
   private runtimesBySessionId = new Map<string, TerminalRuntime>();
+  private pendingSessionIds = new Set<string>();
+  private pendingCreations = new Map<string, Set<string>>();
+  private creationCounter = 0;
   private earlyOutputBuffer = new Map<string, number[][]>();
   private earlyExitEvents = new Map<string, TerminalExitEvent>();
 
@@ -705,17 +774,60 @@ export class TerminalRuntimeRegistry {
   private listenersInitialized: boolean = false;
   private initListenersPromise: Promise<void> | null = null;
 
+  private isSessionPendingOrCreating(sessionId: string): boolean {
+    if (this.pendingSessionIds.has(sessionId)) {
+      return true;
+    }
+    if (this.pendingCreations.size > 0) {
+      for (const provisionalSet of this.pendingCreations.values()) {
+        provisionalSet.add(sessionId);
+      }
+      return true;
+    }
+    return false;
+  }
+
   public async ensureGlobalListeners(): Promise<void> {
     if (this.listenersInitialized) return;
     if (this.initListenersPromise) return this.initListenersPromise;
 
     this.initListenersPromise = (async () => {
+      // Safely dispose any stale handles before starting an attempt
+      if (this.unlistenOutput) {
+        try {
+          this.unlistenOutput();
+        } catch (cleanupErr) {
+          console.warn('[TerminalRuntimeRegistry] Failed to unlisten stale output:', cleanupErr);
+        }
+        this.unlistenOutput = null;
+      }
+      if (this.unlistenExit) {
+        try {
+          this.unlistenExit();
+        } catch (cleanupErr) {
+          console.warn('[TerminalRuntimeRegistry] Failed to unlisten stale exit:', cleanupErr);
+        }
+        this.unlistenExit = null;
+      }
+      if (this.unlistenError) {
+        try {
+          this.unlistenError();
+        } catch (cleanupErr) {
+          console.warn('[TerminalRuntimeRegistry] Failed to unlisten stale error:', cleanupErr);
+        }
+        this.unlistenError = null;
+      }
+
+      let outputUnlisten: (() => void) | null = null;
+      let exitUnlisten: (() => void) | null = null;
+      let errorUnlisten: (() => void) | null = null;
+
       try {
-        this.unlistenOutput = await terminalApi.onOutput((event) => {
+        outputUnlisten = await terminalApi.onOutput((event) => {
           const runtime = this.runtimesBySessionId.get(event.sessionId);
           if (runtime && !runtime.isDisposed) {
             runtime.handleOutputBytes(event.data);
-          } else {
+          } else if (this.isSessionPendingOrCreating(event.sessionId)) {
             let queue = this.earlyOutputBuffer.get(event.sessionId);
             if (!queue) {
               queue = [];
@@ -727,16 +839,16 @@ export class TerminalRuntimeRegistry {
           }
         });
 
-        this.unlistenExit = await terminalApi.onExit((event) => {
+        exitUnlisten = await terminalApi.onExit((event) => {
           const runtime = this.runtimesBySessionId.get(event.sessionId);
           if (runtime && !runtime.isDisposed) {
             runtime.updateStatus('exited', null, null);
-          } else {
+          } else if (this.isSessionPendingOrCreating(event.sessionId)) {
             this.earlyExitEvents.set(event.sessionId, event);
           }
         });
 
-        this.unlistenError = await terminalApi.onError((event) => {
+        errorUnlisten = await terminalApi.onError((event) => {
           if (!event.sessionId) {
             for (const r of this.runtimes.values()) {
               if (!r.isDisposed) {
@@ -747,12 +859,45 @@ export class TerminalRuntimeRegistry {
             const runtime = this.runtimesBySessionId.get(event.sessionId);
             if (runtime && !runtime.isDisposed) {
               runtime.updateStatus('error', null, `Runtime error: ${event.message}`);
+            } else {
+              console.warn(
+                `[TerminalRuntimeRegistry] Discarded error for unknown session ${event.sessionId}:`,
+                event.message,
+              );
             }
           }
         });
 
+        this.unlistenOutput = outputUnlisten;
+        this.unlistenExit = exitUnlisten;
+        this.unlistenError = errorUnlisten;
         this.listenersInitialized = true;
       } catch (err) {
+        if (outputUnlisten) {
+          try {
+            outputUnlisten();
+          } catch (cleanupErr) {
+            console.warn('[TerminalRuntimeRegistry] Failed to unlisten output during rollback:', cleanupErr);
+          }
+        }
+        if (exitUnlisten) {
+          try {
+            exitUnlisten();
+          } catch (cleanupErr) {
+            console.warn('[TerminalRuntimeRegistry] Failed to unlisten exit during rollback:', cleanupErr);
+          }
+        }
+        if (errorUnlisten) {
+          try {
+            errorUnlisten();
+          } catch (cleanupErr) {
+            console.warn('[TerminalRuntimeRegistry] Failed to unlisten error during rollback:', cleanupErr);
+          }
+        }
+        this.unlistenOutput = null;
+        this.unlistenExit = null;
+        this.unlistenError = null;
+        this.listenersInitialized = false;
         console.warn('[TerminalRuntimeRegistry] Failed to initialize global listeners:', err);
       } finally {
         this.initListenersPromise = null;
@@ -763,6 +908,7 @@ export class TerminalRuntimeRegistry {
   }
 
   public bindSession(sessionId: string, runtime: TerminalRuntime): void {
+    this.pendingSessionIds.delete(sessionId);
     this.runtimesBySessionId.set(sessionId, runtime);
     const early = this.earlyOutputBuffer.get(sessionId);
     if (early) {
@@ -779,9 +925,87 @@ export class TerminalRuntimeRegistry {
   }
 
   public unbindSession(sessionId: string): void {
+    this.pendingSessionIds.delete(sessionId);
     this.runtimesBySessionId.delete(sessionId);
     this.earlyOutputBuffer.delete(sessionId);
     this.earlyExitEvents.delete(sessionId);
+  }
+
+  public beginCreation(): string {
+    const token = `pending-create-${++this.creationCounter}-${Date.now()}`;
+    this.pendingCreations.set(token, new Set());
+    return token;
+  }
+
+  public confirmCreation(token: string, sessionId: string): void {
+    const provisionals = this.pendingCreations.get(token);
+    this.pendingCreations.delete(token);
+    this.pendingSessionIds.add(sessionId);
+    if (provisionals) {
+      for (const provId of provisionals) {
+        if (provId !== sessionId) {
+          this.earlyOutputBuffer.delete(provId);
+          this.earlyExitEvents.delete(provId);
+        }
+      }
+    }
+  }
+
+  public cancelCreation(token: string): void {
+    const provisionals = this.pendingCreations.get(token);
+    this.pendingCreations.delete(token);
+    if (provisionals) {
+      for (const provId of provisionals) {
+        this.earlyOutputBuffer.delete(provId);
+        this.earlyExitEvents.delete(provId);
+      }
+    }
+  }
+
+  public markPendingSession(sessionId: string): void {
+    this.pendingSessionIds.add(sessionId);
+  }
+
+  public clearPendingSession(sessionId: string): void {
+    this.pendingSessionIds.delete(sessionId);
+    this.earlyOutputBuffer.delete(sessionId);
+    this.earlyExitEvents.delete(sessionId);
+  }
+
+  public isPendingSession(sessionId: string): boolean {
+    return this.pendingSessionIds.has(sessionId);
+  }
+
+  public get pendingSessionCount(): number {
+    return this.pendingSessionIds.size + this.pendingCreations.size;
+  }
+
+  public get boundSessionCount(): number {
+    return this.runtimesBySessionId.size;
+  }
+
+  public get earlyOutputSessionCount(): number {
+    return this.earlyOutputBuffer.size;
+  }
+
+  public get earlyExitCount(): number {
+    return this.earlyExitEvents.size;
+  }
+
+  public getListenerCounts(): { output: number; exit: number; error: number } {
+    return {
+      output: this.unlistenOutput ? 1 : 0,
+      exit: this.unlistenExit ? 1 : 0,
+      error: this.unlistenError ? 1 : 0,
+    };
+  }
+
+  public hasEarlyOutput(sessionId: string): boolean {
+    return this.earlyOutputBuffer.has(sessionId);
+  }
+
+  public hasEarlyExit(sessionId: string): boolean {
+    return this.earlyExitEvents.has(sessionId);
   }
 
   public get(paneId: string): TerminalRuntime | undefined {
@@ -854,6 +1078,8 @@ export class TerminalRuntimeRegistry {
     }
     this.runtimes.clear();
     this.runtimesBySessionId.clear();
+    this.pendingSessionIds.clear();
+    this.pendingCreations.clear();
     this.earlyOutputBuffer.clear();
     this.earlyExitEvents.clear();
     if (this.unlistenOutput) {
@@ -869,6 +1095,18 @@ export class TerminalRuntimeRegistry {
       this.unlistenError = null;
     }
     this.listenersInitialized = false;
+  }
+
+  public get size(): number {
+    return this.runtimes.size;
+  }
+
+  public getActivePaneIds(): string[] {
+    return Array.from(this.runtimes.keys());
+  }
+
+  public areGlobalListenersInitialized(): boolean {
+    return this.listenersInitialized;
   }
 
   public getAll(): TerminalRuntime[] {

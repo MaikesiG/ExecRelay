@@ -74,8 +74,8 @@ const appCss = fs.readFileSync(
     'Changes tab badge provides file count aria-label',
   );
   assert.ok(
-    panelTsx.includes("aria-label={`${agentRuns.length} agent ${agentRuns.length === 1 ? 'run' : 'runs'}`}"),
-    'Agents tab badge provides agent run count aria-label',
+    !panelTsx.includes('agentRuns.length'),
+    'The v0.1.2 tab strip does not register a future Agents badge',
   );
 
   console.log('✓ Tab count badges are compact (15px), accessible, and never change tab height');
@@ -145,8 +145,8 @@ const appCss = fs.readFileSync(
 
   // 1. Verify .capture-section rhythm
   assert.ok(appCss.includes('.capture-section {'), 'App.css defines .capture-section');
-  assert.ok(appCss.includes('gap: 10px;'), '.capture-section uses 10px row gap');
-  assert.ok(appCss.includes('padding: 8px 10px 10px;'), '.capture-section uses consistent 10px horizontal padding');
+  assert.ok(appCss.includes('gap: 3px;'), '.capture-section uses compact 3px row gap');
+  assert.ok(appCss.includes('padding: 4px 10px 5px;'), '.capture-section uses compact vertical padding');
 
   // 2. Verify target selector spacing & All pill baseline
   assert.ok(appCss.includes('fieldset.capture-target-selector {'), 'App.css resets fieldset margins/padding');

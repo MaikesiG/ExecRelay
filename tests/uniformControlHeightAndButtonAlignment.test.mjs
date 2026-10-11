@@ -423,32 +423,15 @@ console.log('\\n--- Test 6: Verification Modals Control Heights ---');
 }
 
 // ============================================================================
-// Test 7: Policy: Off Badge Hidden from Public Terminal Edition (A1)
+// Test 7: Policy Badge Removed from Stable Core (A1)
 // ============================================================================
-console.log("\\n--- Test 7: Policy Badge Hidden from Public Edition ---");
+console.log("\\n--- Test 7: Policy Badge Removed from Stable Core ---");
 {
-  // 1. Verify editionConfig defines governance: false for public terminal edition
-  assert.ok(
-    editionConfigTs.includes("governance: false"),
-    "Terminal edition must have governance: false",
-  );
-  assert.ok(
-    editionConfigTs.includes("governance: true"),
-    "Internal edition must have governance: true",
-  );
+  assert.strictEqual(editionConfigTs.includes("governance:"), false, "Stable capabilities must not register governance");
+  assert.strictEqual(paneHeaderTsx.includes("policyStatus"), false, "TerminalPaneHeader must not expose policyStatus");
+  assert.strictEqual(paneHeaderTsx.includes("terminal-pane-policy-badge"), false, "TerminalPaneHeader must not render a policy badge");
 
-  // 2. TerminalPaneHeader gates policy badge behind capabilities.governance
-  assert.ok(
-    paneHeaderTsx.includes("useProductCapabilities()") &&
-    paneHeaderTsx.includes("showPolicyBadge = Boolean(capabilities.governance && policyStatus)"),
-    "TerminalPaneHeader must gate policy badge behind capabilities.governance",
-  );
-  assert.ok(
-    paneHeaderTsx.includes("{showPolicyBadge && ("),
-    "Policy badge rendering must depend on showPolicyBadge",
-  );
-
-  console.log("✓ Policy: Off badge strictly hidden from public Terminal edition, visible in internal edition");
+  console.log("✓ Policy badge and governance capability are absent from stable core");
 }
 
 // ============================================================================

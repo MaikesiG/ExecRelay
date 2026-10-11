@@ -15,7 +15,6 @@ import {
   evidenceBlocksFromTranscriptBlock,
   executionFromTranscriptBlock,
   DEFAULT_LOCAL_HUMAN_ACTOR,
-  type ExecutionIntent,
 } from './features/execution';
 import {
   parseEngineeringEvidence,
@@ -74,7 +73,7 @@ import {
   isMonitorViewEnabled,
 } from './features/edition';
 import {
-  sanitizeTranscriptChunk,
+  StreamingTranscriptSanitizer,
   splitPromptTail,
   processInitialEcho,
 } from './features/transcript/transcriptSanitization';
@@ -89,6 +88,12 @@ import type {
   ShellIntegrationLevel,
 } from './features/transcript/types';
 import type { ShellIntegrationEvent } from './features/terminal/shellIntegration';
+import {
+  bufferPendingTerminalInput,
+  consumeTrustedCommandStart,
+  transitionShellLifecycle,
+  type PendingExecutionInput,
+} from './features/terminal/commandBoundaryReconciler';
 import type {
   TerminalSessionInfo,
   TerminalSessionStatus,
@@ -112,6 +117,9 @@ import {
   WorkspaceTabs,
   WorkspaceTabBar,
   WorkspaceDeleteModal,
+  WorkspaceResetModal,
+  resetWorkspaceState,
+  getWorkspaceResetBlocker,
   TerminalPaneLayout,
   useTerminalPaneKeybindings,
   type LogicalWorkspace,
@@ -138,7 +146,28 @@ import {
   type RepositoryContext,
   loadPersistedWorkspaceState,
   savePersistedWorkspaceState,
+  reorderWorkspaces,
+  reorderTerminalTabs,
+  type WorkspaceDropPlacement,
+  getNextTerminalTabColorKey,
+  getTerminalTabColorKey,
+  getTerminalTabDisplayName,
+  normalizeTerminalTabBaseName,
+  findAdjacentId,
+  selectAdjacentTerminalTab,
 } from './features/workspace';
+import {
+  reconcileSelectedBlockIds,
+  selectAllBlockIds,
+  synchronizeBlockSelection,
+  toggleSelectedBlockId,
+} from './features/transcript/selectionReconciliation';
+import {
+  getCaptureTargetScope,
+  normalizeCaptureTargetScope,
+  resolveCaptureTargetPanes,
+  toggleCaptureTargetPane,
+} from './features/transcript/captureTargetScope';
 import {
   useGlobalShortcuts,
   ShortcutSettingsModal,
@@ -205,6 +234,10 @@ function App() {
 
   // Workspace delete confirmation modal state
   const [pendingDeleteWorkspaceId, setPendingDeleteWorkspaceId] =
+    useState<LogicalWorkspaceId | null>(null);
+
+  // Workspace reset confirmation modal state (WORKSPACE-RESET-001)
+  const [pendingResetWorkspaceId, setPendingResetWorkspaceId] =
     useState<LogicalWorkspaceId | null>(null);
 
   // Captured pane close confirmation modal state
@@ -346,9 +379,33 @@ function App() {
     isModalOpen:
       isShortcutSettingsOpen ||
       pendingDeleteWorkspaceId !== null ||
-      pendingCloseCapturedPane !== null,
+      pendingCloseCapturedPane !== null ||
+      pendingResetWorkspaceId !== null,
     onCommand: (command: AppCommand) => {
       switch (command) {
+        case 'workspace.previousTab':
+        case 'workspace.nextTab': {
+          const nextWorkspaceId = findAdjacentId(
+            workspacesRef.current.map((workspace) => workspace.id),
+            activeWorkspaceIdRef.current,
+            command === 'workspace.previousTab' ? -1 : 1,
+          );
+          if (nextWorkspaceId) setActiveWorkspaceId(nextWorkspaceId);
+          break;
+        }
+        case 'terminal.previousTab':
+        case 'terminal.nextTab': {
+          const activeId = activeWorkspaceIdRef.current;
+          const direction = command === 'terminal.previousTab' ? -1 : 1;
+          setWorkspaces((current) =>
+            current.map((workspace) =>
+              workspace.id === activeId
+                ? selectAdjacentTerminalTab(workspace, direction)
+                : workspace,
+            ),
+          );
+          break;
+        }
         case 'focus-terminal': {
           if (isMonitorFocused) {
             setIsMonitorFocused(false);
@@ -391,20 +448,6 @@ function App() {
           setActiveSurface({ kind: 'monitor', view: 'verification' });
           break;
         }
-        case 'focus-agents': {
-          if (!capabilities.agents) break;
-          ensureCapturePanelOpen();
-          setActiveMonitorView('agents');
-          setActiveSurface({ kind: 'monitor', view: 'agents' });
-          break;
-        }
-        case 'focus-governance': {
-          if (!capabilities.governance) break;
-          ensureCapturePanelOpen();
-          setActiveMonitorView('governance');
-          setActiveSurface({ kind: 'monitor', view: 'governance' });
-          break;
-        }
       }
     },
   });
@@ -443,6 +486,7 @@ function App() {
   const [isVerificationStopping, setIsVerificationStopping] = useState(false);
   const [isVerificationStopTimeout, setIsVerificationStopTimeout] = useState(false);
   const verificationRuntimeRef = useRef<ActiveVerificationRuntime | null>(null);
+  const inFlightVerificationRunIdRef = useRef<string | null>(null);
   const executeVerificationCriterionRef = useRef<
     | ((
         workspaceId: string,
@@ -490,11 +534,11 @@ function App() {
   const transcriptFeedbackTimeoutRef = useRef<number | null>(null);
 
   const showTranscriptFeedback = useCallback(
-    (message: string, type: 'success' | 'error') => {
+    (message: string, type: 'success' | 'error', dedupeKey?: string) => {
       if (transcriptFeedbackTimeoutRef.current !== null) {
         window.clearTimeout(transcriptFeedbackTimeoutRef.current);
       }
-      setTranscriptFeedback({ message, type });
+      setTranscriptFeedback({ message, type, dedupeKey });
       transcriptFeedbackTimeoutRef.current = window.setTimeout(() => {
         setTranscriptFeedback(null);
         transcriptFeedbackTimeoutRef.current = null;
@@ -639,6 +683,9 @@ function App() {
           paneId,
           paneOrdinal,
         );
+        runtime.shellLifecycleState =
+          terminalRuntimeRegistry.get(paneId)?.shellLifecycleState ??
+          'initializing';
         paneCaptureRuntimesRef.current.set(key, runtime);
       }
       return runtime;
@@ -718,7 +765,7 @@ interface CreateWorkspaceOptions {
       const newTab = createDefaultTerminalTab(
         newTabId,
         newWorkspaceId,
-        'Terminal 1',
+        'Terminal',
         newPaneId,
         newPane,
       );
@@ -806,15 +853,60 @@ interface CreateWorkspaceOptions {
     [],
   );
 
+  const reorderWorkspace = useCallback(
+    (
+      draggedWorkspaceId: LogicalWorkspaceId,
+      targetWorkspaceId: LogicalWorkspaceId,
+      placement: WorkspaceDropPlacement,
+    ) => {
+      setWorkspaces((prev) => {
+        const next = reorderWorkspaces(
+          prev,
+          draggedWorkspaceId,
+          targetWorkspaceId,
+          placement,
+        );
+        if (next === prev) return prev;
+        workspacesRef.current = next;
+        return next;
+      });
+    },
+    [],
+  );
+
+  const reorderTerminalTab = useCallback(
+    (
+      workspaceId: LogicalWorkspaceId,
+      draggedTabId: TerminalTabId,
+      targetTabId: TerminalTabId,
+      placement: WorkspaceDropPlacement,
+    ) => {
+      updateWorkspace(workspaceId, (prev) => {
+        const nextTabs = reorderTerminalTabs(
+          prev.terminalTabs,
+          draggedTabId,
+          targetTabId,
+          placement,
+        );
+        if (nextTabs === prev.terminalTabs) return prev;
+        return {
+          ...prev,
+          terminalTabs: nextTabs,
+          terminalTabIds: nextTabs.map((t) => t.id),
+        };
+      });
+    },
+    [updateWorkspace],
+  );
+
   const renameTerminalTab = useCallback(
     (
       workspaceId: string,
       terminalTabId: string,
       name: string,
     ) => {
-      const trimmed = name.trim();
-      if (!trimmed) return;
-      const finalName = trimmed.slice(0, 40);
+      if (!name.trim()) return;
+      const finalName = normalizeTerminalTabBaseName(name);
       setWorkspaces((prev) =>
         prev.map((ws) => {
           if (ws.id !== workspaceId) return ws;
@@ -824,7 +916,12 @@ interface CreateWorkspaceOptions {
             ...ws,
             terminalTabs: ws.terminalTabs.map((t) =>
               t.id === terminalTabId
-                ? { ...t, label: finalName, name: finalName }
+                ? {
+                    ...t,
+                    baseName: finalName,
+                    label: finalName,
+                    name: finalName,
+                  }
                 : t,
             ),
           };
@@ -854,6 +951,45 @@ interface CreateWorkspaceOptions {
     [],
   );
 
+  const prepareDynamicCapturePane = useCallback(
+    (
+      workspace: LogicalWorkspace,
+      pane: ReturnType<typeof createDefaultTerminalPane>,
+      runtime: PaneCaptureRuntime,
+    ) => {
+      if (getCaptureTargetScope(workspace).mode !== 'all') return pane;
+      const existingRuntime = Array.from(
+        paneCaptureRuntimesRef.current.values(),
+      ).find(
+        (candidate) =>
+          candidate.workspaceId === workspace.id &&
+          (candidate.status === 'capturing' || candidate.status === 'paused'),
+      );
+      if (!existingRuntime || !workspace.capture.currentBatch) return pane;
+
+      const captureSessionId = `cs-${pane.id}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+      runtime.status = existingRuntime.status;
+      runtime.captureGroupId =
+        existingRuntime.captureGroupId ??
+        `cg-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+      runtime.captureSessionId = captureSessionId;
+      runtime.currentBatch = workspace.capture.currentBatch;
+
+      return {
+        ...pane,
+        capture: {
+          ...pane.capture,
+          isListening: existingRuntime.status === 'capturing',
+          hasRetainedData: true,
+          currentBatchId: workspace.capture.currentBatch.id,
+          sessionId: captureSessionId,
+          warning: null,
+        },
+      };
+    },
+    [],
+  );
+
   const splitPaneRight = useCallback(
     (workspaceId: string, terminalTabId: string, sourcePaneId: string) => {
       const ws = workspacesRef.current.find((w) => w.id === workspaceId);
@@ -868,7 +1004,7 @@ interface CreateWorkspaceOptions {
 
       const newPaneId: TerminalPaneId = `pane-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
       const nextOrdinal = getNextUnusedStableOrdinal(tab.panes);
-      const newPane = createDefaultTerminalPane(
+      const createdPane = createDefaultTerminalPane(
         terminalTabId,
         newPaneId,
         nextOrdinal,
@@ -884,6 +1020,7 @@ interface CreateWorkspaceOptions {
         terminalTabId,
         newPaneId,
       );
+      const newPane = prepareDynamicCapturePane(ws, createdPane, newRuntime);
       paneCaptureRuntimesRef.current.set(runtimeKey, newRuntime);
 
       setWorkspaces((prev) =>
@@ -901,7 +1038,7 @@ interface CreateWorkspaceOptions {
         terminalRefs.current.get(newPaneId)?.focus();
       }, 50);
     },
-    [showTerminalPaneToast],
+    [prepareDynamicCapturePane, showTerminalPaneToast],
   );
 
   const splitPaneDown = useCallback(
@@ -918,7 +1055,7 @@ interface CreateWorkspaceOptions {
 
       const newPaneId: TerminalPaneId = `pane-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
       const nextOrdinal = getNextUnusedStableOrdinal(tab.panes);
-      const newPane = createDefaultTerminalPane(
+      const createdPane = createDefaultTerminalPane(
         terminalTabId,
         newPaneId,
         nextOrdinal,
@@ -934,6 +1071,7 @@ interface CreateWorkspaceOptions {
         terminalTabId,
         newPaneId,
       );
+      const newPane = prepareDynamicCapturePane(ws, createdPane, newRuntime);
       paneCaptureRuntimesRef.current.set(runtimeKey, newRuntime);
 
       setWorkspaces((prev) =>
@@ -951,7 +1089,7 @@ interface CreateWorkspaceOptions {
         terminalRefs.current.get(newPaneId)?.focus();
       }, 50);
     },
-    [showTerminalPaneToast],
+    [prepareDynamicCapturePane, showTerminalPaneToast],
   );
 
   const setActivePane = useCallback(
@@ -1188,6 +1326,7 @@ interface CreateWorkspaceOptions {
       runtime.activeBlockId = null;
       runtime.activeBlockParser = null;
       runtime.inputBuffer = '';
+      runtime.pendingExecutionInput = null;
       runtime.textDecoder = new TextDecoder();
       runtime.captureSessionId = null;
       runtime.captureGroupId = null;
@@ -1503,21 +1642,34 @@ interface CreateWorkspaceOptions {
         }
       }
 
+      const allTargetPaneIds = new Set<string>();
+      for (const p of target.panes ?? []) {
+        allTargetPaneIds.add(p.id);
+      }
       for (const tab of target.terminalTabs) {
-        for (const pane of tab.panes) {
+        for (const pane of tab.panes ?? []) {
+          allTargetPaneIds.add(pane.id);
+        }
+        for (const pane of tab.terminalPanes ?? []) {
+          allTargetPaneIds.add(pane.id);
+        }
+      }
+
+      for (const paneId of allTargetPaneIds) {
+        for (const tab of target.terminalTabs) {
           const runtimeKey = getPaneCaptureRuntimeKey(
             workspaceId,
             tab.id,
-            pane.id,
+            paneId,
           );
           const runtime = paneCaptureRuntimesRef.current.get(runtimeKey);
           if (runtime) {
             cleanupPaneCaptureRuntime(runtime);
             paneCaptureRuntimesRef.current.delete(runtimeKey);
           }
-          terminalRefs.current.delete(pane.id);
-          terminalRuntimeRegistry.dispose(pane.id);
         }
+        terminalRefs.current.delete(paneId);
+        terminalRuntimeRegistry.dispose(paneId);
       }
 
       setPendingDeleteWorkspaceId(null);
@@ -1536,6 +1688,7 @@ interface CreateWorkspaceOptions {
         setIsVerificationStopping(false);
         setIsVerificationStopTimeout(false);
       }
+      inFlightVerificationRunIdRef.current = null;
 
       if (nextActiveId !== activeWorkspaceIdRef.current) {
         setActiveWorkspaceId(nextActiveId);
@@ -1599,11 +1752,126 @@ interface CreateWorkspaceOptions {
   void setCaptureWarningAction;
   void clearCaptureWarningAction;
 
+  const isVerificationRunningInRender = Boolean(
+    activeWorkspace &&
+      (getActiveVerificationRun(activeWorkspace)?.status === 'running' ||
+        Boolean(activeWorkspace.verification?.activeRunId)),
+  );
+
+  const resetBlockReason = activeWorkspace
+    ? getWorkspaceResetBlocker(activeWorkspace, isVerificationRunningInRender)
+    : null;
+  const isResetBlocked = resetBlockReason !== null;
+
+  const handleRequestResetWorkspace = useCallback(() => {
+    const ws = workspacesRef.current.find(
+      (w) => w.id === activeWorkspaceIdRef.current,
+    );
+    if (!ws) return;
+    const isVerificationActive = Boolean(
+      (verificationRuntimeRef.current &&
+        isVerificationRuntimeActive(verificationRuntimeRef.current)) ||
+        (ws && getActiveVerificationRun(ws)?.status === 'running') ||
+        Boolean(ws?.verification?.activeRunId),
+    );
+    const blocker = getWorkspaceResetBlocker(ws, isVerificationActive);
+    if (blocker) {
+      const dedupeKey = blocker.includes('Verification')
+        ? 'workspace:reset:blocked-verification'
+        : 'workspace:reset:blocked-capture';
+      showTranscriptFeedback(blocker, 'error', dedupeKey);
+      return;
+    }
+    setPendingResetWorkspaceId(ws.id);
+  }, [showTranscriptFeedback]);
+
+  const handleConfirmResetWorkspace = useCallback(
+    (workspaceId: LogicalWorkspaceId) => {
+      const ws = workspacesRef.current.find((w) => w.id === workspaceId);
+      if (!ws) {
+        setPendingResetWorkspaceId(null);
+        return;
+      }
+
+      const isVerificationActive = Boolean(
+        (verificationRuntimeRef.current &&
+          isVerificationRuntimeActive(verificationRuntimeRef.current)) ||
+          (ws && getActiveVerificationRun(ws)?.status === 'running') ||
+          Boolean(ws?.verification?.activeRunId),
+      );
+      const blocker = getWorkspaceResetBlocker(ws, isVerificationActive);
+      if (blocker) {
+        setPendingResetWorkspaceId(null);
+        const dedupeKey = blocker.includes('Verification')
+          ? 'workspace:reset:blocked-verification'
+          : 'workspace:reset:blocked-capture';
+        showTranscriptFeedback(blocker, 'error', dedupeKey);
+        return;
+      }
+
+      setPendingResetWorkspaceId(null);
+
+      // 1. Clear terminal visible screen and scrollback buffers for all panes in the target workspace,
+      // preserving live shell prompt at row 0 without emulator mode disruption (WORKSPACE-RESET-001R2)
+      for (const pane of ws.panes) {
+        const runtime = terminalRuntimeRegistry.get(pane.id);
+        if (runtime && !runtime.isDisposed) {
+          runtime.terminal.clear();
+          runtime.terminal.scrollToBottom();
+        }
+      }
+
+      // Refocus active terminal pane if available
+      const activeTab = ws.terminalTabs.find(
+        (t) => t.id === ws.activeTerminalTabId,
+      );
+      const activePaneId = activeTab?.activePaneId ?? activeTab?.panes[0]?.id;
+      if (activePaneId) {
+        terminalRuntimeRegistry.get(activePaneId)?.terminal.focus();
+      }
+
+      // 2. Clear ephemeral pane capture runtimes for this workspace
+      for (const runtime of paneCaptureRuntimesRef.current.values()) {
+        if (runtime.workspaceId === workspaceId) {
+          cancelPendingFlush(
+            runtime.workspaceId,
+            runtime.terminalTabId,
+            runtime.paneId,
+          );
+          runtime.activeBlockId = null;
+          runtime.activeBlockParser = null;
+          runtime.inputBuffer = '';
+          runtime.pendingExecutionInput = null;
+          runtime.status = 'idle';
+          runtime.captureSessionId = null;
+          runtime.captureGroupId = null;
+          runtime.currentBatch = null;
+          runtime.blocks = [];
+        }
+      }
+
+      // 3. Atomically reset workspace state
+      updateWorkspace(workspaceId, (prev) => resetWorkspaceState(prev));
+
+      // 4. Emit single semantic success feedback
+      showTranscriptFeedback('Workspace reset.', 'success', 'workspace:reset');
+    },
+    [
+      cancelPendingFlush,
+      showTranscriptFeedback,
+      updateWorkspace,
+    ],
+  );
+
   useTerminalPaneKeybindings({
     activeWorkspaceId,
     workspaces,
     isModalOpen:
-      pendingDeleteWorkspaceId !== null || pendingCloseCapturedPane !== null,
+      isShortcutSettingsOpen ||
+      pendingDeleteWorkspaceId !== null ||
+      pendingCloseCapturedPane !== null ||
+      pendingResetWorkspaceId !== null,
+    registry: defaultShortcutRegistry,
     onSplitRight: splitPaneRight,
     onSplitDown: splitPaneDown,
     onClosePane: requestCloseTerminalPane,
@@ -1653,26 +1921,39 @@ interface CreateWorkspaceOptions {
     const ws = workspacesRef.current.find((w) => w.id === activeWorkspaceId);
     if (!ws) return;
 
-    // Generate unique label: Terminal N, where N is not reused among currently open tabs in this workspace
-    const existingLabels = new Set(ws.terminalTabs.map((t) => t.label));
-    let nextN = 1;
-    while (existingLabels.has(`Terminal ${nextN}`)) {
-      nextN++;
-    }
-    const label = `Terminal ${nextN}`;
     const newTabId: TerminalTabId = `tab-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
     const newPaneId: TerminalPaneId = `pane-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 
-    const newPane = createDefaultTerminalPane(newTabId, newPaneId, 1, 'blue');
-    const newTab: TerminalTab = createDefaultTerminalTab(
+    const createdPane = createDefaultTerminalPane(newTabId, newPaneId, 1, 'blue');
+    const newRuntime = createPaneCaptureRuntime(ws.id, newTabId, newPaneId, 1);
+    const newPane = prepareDynamicCapturePane(ws, createdPane, newRuntime);
+    const createdTab = createDefaultTerminalTab(
       newTabId,
       ws.id,
-      label,
+      'Terminal',
       newPaneId,
       newPane,
+      getNextTerminalTabColorKey(ws.terminalTabs),
     );
+    const newTab: TerminalTab = {
+      ...createdTab,
+      panels: createdTab.panels.map((panel) =>
+        panel.kind === 'capture'
+          ? { ...panel, groupStatus: newRuntime.status === 'capturing'
+              ? 'capturing'
+              : newRuntime.status === 'paused'
+                ? 'paused'
+                : 'ready' }
+          : panel,
+      ),
+      capture: {
+        ...createdTab.capture,
+        isListening: newRuntime.status === 'capturing',
+        hasRetainedData: newPane.capture.hasRetainedData,
+        currentBatchId: newPane.capture.currentBatchId,
+      },
+    };
 
-    const newRuntime = createPaneCaptureRuntime(ws.id, newTabId, newPaneId, 1);
     const runtimeKey = getPaneCaptureRuntimeKey(ws.id, newTabId, newPaneId);
     paneCaptureRuntimesRef.current.set(runtimeKey, newRuntime);
 
@@ -1684,10 +1965,10 @@ interface CreateWorkspaceOptions {
       activeTerminalTabId: newTabId,
       capture: {
         ...prev.capture,
-        isListening: false,
+        isListening: prev.capture.isListening,
       },
     }));
-  }, [activeWorkspaceId, updateWorkspace]);
+  }, [activeWorkspaceId, prepareDynamicCapturePane, updateWorkspace]);
 
   const handleCloseTerminalTab = useCallback(
     (tabId: TerminalTabId) => {
@@ -1705,7 +1986,14 @@ interface CreateWorkspaceOptions {
       }
 
       const targetTab = currentTabs.find((t) => t.id === tabId);
-      const targetPaneIds = targetTab?.paneIds ?? [];
+      const targetPaneIds = [
+        ...new Set([
+          ...(targetTab?.panes?.map((p) => p.id) ?? []),
+          ...(targetTab?.terminalPanes?.map((p) => p.id) ?? []),
+          ...(targetTab?.paneIds ?? []),
+          ...ws.panes.filter((p) => p.terminalTabId === tabId).map((p) => p.id),
+        ]),
+      ];
 
       // Calculate next active tab before removal: right neighbor preferred, left fallback
       const currentIndex = currentTabs.findIndex((t) => t.id === tabId);
@@ -1759,17 +2047,67 @@ interface CreateWorkspaceOptions {
         nextActiveTab?.capture?.isListening ??
         false;
 
-      updateWorkspace(ws.id, (prev) => ({
-        ...prev,
-        terminalTabs: prev.terminalTabs.filter((t) => t.id !== tabId),
-        terminalTabIds: prev.terminalTabIds.filter((id) => id !== tabId),
-        panes: prev.panes.filter((p) => !targetPaneIds.includes(p.id)),
-        activeTerminalTabId: nextActiveTabId,
-        capture: {
-          ...prev.capture,
-          isListening: nextIsListening,
-        },
-      }));
+      updateWorkspace(ws.id, (prev) => {
+        const survivingTabs = prev.terminalTabs.filter((t) => t.id !== tabId);
+        const survivingPanes = prev.panes.filter(
+          (p) => !targetPaneIds.includes(p.id) && p.terminalTabId !== tabId,
+        );
+        const survivingPaneIds = survivingPanes.map((p) => p.id);
+        const nextTargetScope =
+          prev.capture.targetScope?.mode === 'explicit'
+            ? normalizeCaptureTargetScope(
+                {
+                  mode: 'explicit' as const,
+                  paneIds: prev.capture.targetScope.paneIds.filter(
+                    (id) => !targetPaneIds.includes(id),
+                  ),
+                },
+                survivingPaneIds,
+              )
+            : prev.capture.targetScope;
+
+        const currentSelectedIds = new Set(
+          nextTargetScope?.mode === 'all'
+            ? survivingPaneIds
+            : nextTargetScope?.paneIds ?? [],
+        );
+        const updatedTabs = survivingTabs.map((t) => {
+          const panel = t.panels?.find(
+            (p): p is CapturePanel => p.kind === 'capture',
+          );
+          if (!panel) return t;
+          const tabSelectedIds = t.panes
+            .filter((pane) => currentSelectedIds.has(pane.id))
+            .map((pane) => pane.id);
+
+          const updatedPanels = (t.panels ?? []).map((p) =>
+            p.id === panel.id
+              ? {
+                  ...p,
+                  selectedCapturePaneIds: tabSelectedIds,
+                }
+              : p,
+          );
+
+          return {
+            ...t,
+            panels: updatedPanels,
+          };
+        });
+
+        return {
+          ...prev,
+          terminalTabs: updatedTabs,
+          terminalTabIds: prev.terminalTabIds.filter((id) => id !== tabId),
+          panes: survivingPanes,
+          activeTerminalTabId: nextActiveTabId,
+          capture: {
+            ...prev.capture,
+            isListening: nextIsListening,
+            targetScope: nextTargetScope,
+          },
+        };
+      });
     },
     [activeWorkspaceId, updateWorkspace, showTranscriptFeedback],
   );
@@ -1781,12 +2119,8 @@ interface CreateWorkspaceOptions {
       const tab = ws.terminalTabs.find((t) => t.id === terminalTabId);
       if (!tab) return;
 
-      const capturePanel = tab.panels?.find(
-        (p): p is CapturePanel => p.kind === 'capture',
-      );
-      const validPaneIds = (capturePanel?.selectedCapturePaneIds ?? []).filter(
-        (id) => tab.panes.some((p) => p.id === id),
-      );
+      const validPanes = resolveCaptureTargetPanes(ws);
+      const validPaneIds = validPanes.map((pane) => pane.id);
 
       if (validPaneIds.length === 0) {
         showTranscriptFeedback(
@@ -1805,15 +2139,16 @@ interface CreateWorkspaceOptions {
       const captureGroupId = `cg-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
       const selectedIdSet = new Set(validPaneIds);
 
-      for (const paneId of validPaneIds) {
+      for (const pane of validPanes) {
+        const paneId = pane.id;
         const captureSessionId = `cs-${paneId}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
         const runtime = getOrCreatePaneCaptureRuntime(
           workspaceId,
-          terminalTabId,
+          pane.terminalTabId,
           paneId,
         );
         if (runtime) {
-          cancelPendingFlush(workspaceId, terminalTabId, paneId);
+          cancelPendingFlush(workspaceId, pane.terminalTabId, paneId);
           runtime.captureGroupId = captureGroupId;
           runtime.captureSessionId = captureSessionId;
           runtime.status = 'capturing';
@@ -1821,14 +2156,15 @@ interface CreateWorkspaceOptions {
           runtime.activeBlockId = null;
           runtime.activeBlockParser = null;
           runtime.inputBuffer = '';
+          runtime.pendingExecutionInput = null;
           runtime.textDecoder = new TextDecoder();
         }
       }
 
       updateWorkspace(workspaceId, (prev) => {
         const updatedPanes = prev.panes.map((p) => {
-          if (p.terminalTabId === terminalTabId && selectedIdSet.has(p.id)) {
-            const key = getPaneCaptureRuntimeKey(workspaceId, terminalTabId, p.id);
+          if (selectedIdSet.has(p.id)) {
+            const key = getPaneCaptureRuntimeKey(workspaceId, p.terminalTabId, p.id);
             const runtime = paneCaptureRuntimesRef.current.get(key);
             return {
               ...p,
@@ -1846,16 +2182,21 @@ interface CreateWorkspaceOptions {
         });
 
         const updatedTabs = prev.terminalTabs.map((t) => {
-          if (t.id !== terminalTabId) return t;
           const panel = t.panels?.find(
             (p): p is CapturePanel => p.kind === 'capture',
           );
+          const tabTargetIds = validPanes
+            .filter((pane) => pane.terminalTabId === t.id)
+            .map((pane) => pane.id);
           const updatedPanels = (t.panels ?? []).map((p) =>
             p.id === panel?.id
               ? {
                   ...p,
-                  selectedCapturePaneIds: validPaneIds,
-                  groupStatus: 'capturing' as const,
+                  selectedCapturePaneIds: tabTargetIds,
+                  groupStatus:
+                    tabTargetIds.length > 0
+                      ? ('capturing' as const)
+                      : ('ready' as const),
                 }
               : p,
           );
@@ -1864,9 +2205,13 @@ interface CreateWorkspaceOptions {
             panels: updatedPanels,
             capture: {
               ...t.capture,
-              isListening: true,
-              hasRetainedData: true,
-              currentBatchId: nextBatchId,
+              isListening: tabTargetIds.length > 0,
+              hasRetainedData:
+                Boolean(t.capture?.hasRetainedData) || tabTargetIds.length > 0,
+              currentBatchId:
+                tabTargetIds.length > 0
+                  ? nextBatchId
+                  : (t.capture?.currentBatchId ?? null),
               warning: null,
             },
           };
@@ -1897,17 +2242,13 @@ interface CreateWorkspaceOptions {
     (workspaceId: LogicalWorkspaceId, terminalTabId: TerminalTabId) => {
       const ws = workspacesRef.current.find((w) => w.id === workspaceId);
       if (!ws) return;
-      const tab = ws.terminalTabs.find((t) => t.id === terminalTabId);
-      if (!tab) return;
+      if (!ws.terminalTabs.some((t) => t.id === terminalTabId)) return;
 
-      const capturePanel = tab.panels?.find(
-        (p): p is CapturePanel => p.kind === 'capture',
-      );
-      const selectedIds = new Set(capturePanel?.selectedCapturePaneIds ?? []);
+      const targetPanes = resolveCaptureTargetPanes(ws);
+      const selectedIds = new Set(targetPanes.map((pane) => pane.id));
 
-      const activeGroupRuntimes = tab.panes
-        .filter((p) => selectedIds.has(p.id))
-        .map((p) => findPaneCaptureRuntime(workspaceId, terminalTabId, p.id))
+      const activeGroupRuntimes = targetPanes
+        .map((p) => findPaneCaptureRuntime(workspaceId, p.terminalTabId, p.id))
         .filter(
           (r): r is PaneCaptureRuntime =>
             r !== null && r.status === 'capturing',
@@ -1919,7 +2260,7 @@ interface CreateWorkspaceOptions {
       const now = Date.now();
 
       for (const r of activeGroupRuntimes) {
-        cancelPendingFlush(workspaceId, terminalTabId, r.paneId);
+        cancelPendingFlush(workspaceId, r.terminalTabId, r.paneId);
         if (r.activeBlockId && r.activeBlockParser) {
           const out = splitPromptTail(r.activeBlockParser.buffer).substantiveOutput;
           finalizedMap.set(r.activeBlockId, out);
@@ -1927,6 +2268,7 @@ interface CreateWorkspaceOptions {
         r.activeBlockId = null;
         r.activeBlockParser = null;
         r.inputBuffer = '';
+        r.pendingExecutionInput = null;
         r.status = 'paused';
       }
 
@@ -1949,7 +2291,7 @@ interface CreateWorkspaceOptions {
         });
 
         const updatedPanes = prev.panes.map((p) => {
-          if (p.terminalTabId === terminalTabId && selectedIds.has(p.id)) {
+          if (selectedIds.has(p.id)) {
             return {
               ...p,
               capture: {
@@ -1962,19 +2304,21 @@ interface CreateWorkspaceOptions {
         });
 
         const updatedTabs = prev.terminalTabs.map((t) => {
-          if (t.id !== terminalTabId) return t;
           const panel = t.panels?.find(
             (p): p is CapturePanel => p.kind === 'capture',
           );
+          const hasTargets = targetPanes.some((pane) => pane.terminalTabId === t.id);
           const updatedPanels = (t.panels ?? []).map((p) =>
-            p.id === panel?.id ? { ...p, groupStatus: 'paused' as const } : p,
+            p.id === panel?.id && hasTargets
+              ? { ...p, groupStatus: 'paused' as const }
+              : p,
           );
           return {
             ...t,
             panels: updatedPanels,
             capture: {
               ...t.capture,
-              isListening: false,
+              isListening: hasTargets ? false : Boolean(t.capture?.isListening),
             },
           };
         });
@@ -1998,17 +2342,13 @@ interface CreateWorkspaceOptions {
     (workspaceId: LogicalWorkspaceId, terminalTabId: TerminalTabId) => {
       const ws = workspacesRef.current.find((w) => w.id === workspaceId);
       if (!ws) return;
-      const tab = ws.terminalTabs.find((t) => t.id === terminalTabId);
-      if (!tab) return;
+      if (!ws.terminalTabs.some((t) => t.id === terminalTabId)) return;
 
-      const capturePanel = tab.panels?.find(
-        (p): p is CapturePanel => p.kind === 'capture',
-      );
-      const selectedIds = new Set(capturePanel?.selectedCapturePaneIds ?? []);
+      const targetPanes = resolveCaptureTargetPanes(ws);
+      const selectedIds = new Set(targetPanes.map((pane) => pane.id));
 
-      const pausedRuntimes = tab.panes
-        .filter((p) => selectedIds.has(p.id))
-        .map((p) => findPaneCaptureRuntime(workspaceId, terminalTabId, p.id))
+      const pausedRuntimes = targetPanes
+        .map((p) => findPaneCaptureRuntime(workspaceId, p.terminalTabId, p.id))
         .filter(
           (r): r is PaneCaptureRuntime =>
             r !== null && r.status === 'paused',
@@ -2021,11 +2361,12 @@ interface CreateWorkspaceOptions {
         r.activeBlockId = null;
         r.activeBlockParser = null;
         r.inputBuffer = '';
+        r.pendingExecutionInput = null;
       }
 
       updateWorkspace(workspaceId, (prev) => {
         const updatedPanes = prev.panes.map((p) => {
-          if (p.terminalTabId === terminalTabId && selectedIds.has(p.id)) {
+          if (selectedIds.has(p.id)) {
             return {
               ...p,
               capture: {
@@ -2038,19 +2379,21 @@ interface CreateWorkspaceOptions {
         });
 
         const updatedTabs = prev.terminalTabs.map((t) => {
-          if (t.id !== terminalTabId) return t;
           const panel = t.panels?.find(
             (p): p is CapturePanel => p.kind === 'capture',
           );
+          const hasTargets = targetPanes.some((pane) => pane.terminalTabId === t.id);
           const updatedPanels = (t.panels ?? []).map((p) =>
-            p.id === panel?.id ? { ...p, groupStatus: 'capturing' as const } : p,
+            p.id === panel?.id && hasTargets
+              ? { ...p, groupStatus: 'capturing' as const }
+              : p,
           );
           return {
             ...t,
             panels: updatedPanels,
             capture: {
               ...t.capture,
-              isListening: true,
+              isListening: hasTargets ? true : Boolean(t.capture?.isListening),
             },
           };
         });
@@ -2073,17 +2416,13 @@ interface CreateWorkspaceOptions {
     (workspaceId: LogicalWorkspaceId, terminalTabId: TerminalTabId) => {
       const ws = workspacesRef.current.find((w) => w.id === workspaceId);
       if (!ws) return;
-      const tab = ws.terminalTabs.find((t) => t.id === terminalTabId);
-      if (!tab) return;
+      if (!ws.terminalTabs.some((t) => t.id === terminalTabId)) return;
 
-      const capturePanel = tab.panels?.find(
-        (p): p is CapturePanel => p.kind === 'capture',
-      );
-      const selectedIds = new Set(capturePanel?.selectedCapturePaneIds ?? []);
+      const targetPanes = resolveCaptureTargetPanes(ws);
+      const selectedIds = new Set(targetPanes.map((pane) => pane.id));
 
-      const activeGroupRuntimes = tab.panes
-        .filter((p) => selectedIds.has(p.id))
-        .map((p) => findPaneCaptureRuntime(workspaceId, terminalTabId, p.id))
+      const activeGroupRuntimes = targetPanes
+        .map((p) => findPaneCaptureRuntime(workspaceId, p.terminalTabId, p.id))
         .filter(
           (r): r is PaneCaptureRuntime =>
             r !== null && (r.status === 'capturing' || r.status === 'paused'),
@@ -2093,7 +2432,7 @@ interface CreateWorkspaceOptions {
       const now = Date.now();
 
       for (const r of activeGroupRuntimes) {
-        cancelPendingFlush(workspaceId, terminalTabId, r.paneId);
+        cancelPendingFlush(workspaceId, r.terminalTabId, r.paneId);
         if (r.activeBlockId && r.activeBlockParser) {
           const out = splitPromptTail(r.activeBlockParser.buffer).substantiveOutput;
           finalizedMap.set(r.activeBlockId, out);
@@ -2101,6 +2440,7 @@ interface CreateWorkspaceOptions {
         r.activeBlockId = null;
         r.activeBlockParser = null;
         r.inputBuffer = '';
+        r.pendingExecutionInput = null;
         r.status = 'idle';
         r.captureSessionId = null;
         r.captureGroupId = null;
@@ -2140,35 +2480,41 @@ interface CreateWorkspaceOptions {
           }
         }
 
-        const updatedPanes = prev.panes.map((p) => {
-          if (p.terminalTabId === terminalTabId && selectedIds.has(p.id)) {
-            return {
-              ...p,
-              capture: {
-                ...p.capture,
-                isListening: false,
-                sessionId: null,
-                warning: null,
-              },
-            };
-          }
-          return p;
-        });
+        const panesWithCaptureUpdates = prev.panes.map((p) => ({
+          ...p,
+          ...(selectedIds.has(p.id)
+            ? {
+                capture: {
+                  ...p.capture,
+                  isListening: false,
+                  sessionId: null,
+                  warning: null,
+                },
+              }
+            : {}),
+        }));
+        const synchronized = synchronizeBlockSelection(
+          panesWithCaptureUpdates,
+          nextSelected,
+          now,
+        );
 
         const updatedTabs = prev.terminalTabs.map((t) => {
-          if (t.id !== terminalTabId) return t;
           const panel = t.panels?.find(
             (p): p is CapturePanel => p.kind === 'capture',
           );
+          const hasTargets = targetPanes.some((pane) => pane.terminalTabId === t.id);
           const updatedPanels = (t.panels ?? []).map((p) =>
-            p.id === panel?.id ? { ...p, groupStatus: 'ready' as const } : p,
+            p.id === panel?.id && hasTargets
+              ? { ...p, groupStatus: 'ready' as const }
+              : p,
           );
           return {
             ...t,
             panels: updatedPanels,
             capture: {
               ...t.capture,
-              isListening: false,
+              isListening: hasTargets ? false : Boolean(t.capture?.isListening),
               warning: null,
             },
           };
@@ -2177,7 +2523,7 @@ interface CreateWorkspaceOptions {
         return {
           ...prev,
           terminalTabs: updatedTabs,
-          panes: updatedPanes,
+          panes: synchronized.panes,
           capture: {
             ...prev.capture,
             isListening: false,
@@ -2185,7 +2531,7 @@ interface CreateWorkspaceOptions {
             blocks: updatedBlocks,
           },
           selection: {
-            selectedBlockIds: nextSelected,
+            selectedBlockIds: synchronized.selectedBlockIds,
             updatedAt: now,
           },
         };
@@ -2198,18 +2544,17 @@ interface CreateWorkspaceOptions {
     (workspaceId: LogicalWorkspaceId, terminalTabId: TerminalTabId) => {
       const ws = workspacesRef.current.find((w) => w.id === workspaceId);
       if (!ws) return;
-      const tab = ws.terminalTabs.find((t) => t.id === terminalTabId);
-      if (!tab) return;
-      const capturePanel = tab.panels?.find(
-        (p): p is CapturePanel => p.kind === 'capture',
-      );
-
-      const status = getCaptureGroupStatus(
-        workspaceId,
-        terminalTabId,
-        capturePanel?.selectedCapturePaneIds,
-        paneCaptureRuntimesRef.current,
-      );
+      if (!ws.terminalTabs.some((t) => t.id === terminalTabId)) return;
+      const targetRuntimes = resolveCaptureTargetPanes(ws)
+        .map((pane) =>
+          findPaneCaptureRuntime(workspaceId, pane.terminalTabId, pane.id),
+        )
+        .filter((runtime): runtime is PaneCaptureRuntime => runtime !== null);
+      const status = targetRuntimes.some((runtime) => runtime.status === 'capturing')
+        ? 'capturing'
+        : targetRuntimes.some((runtime) => runtime.status === 'paused')
+          ? 'paused'
+          : 'ready';
 
       if (status === 'capturing') {
         handlePauseCaptureGroup(workspaceId, terminalTabId);
@@ -2223,6 +2568,7 @@ interface CreateWorkspaceOptions {
       handlePauseCaptureGroup,
       handleResumeCaptureGroup,
       handleStartCaptureGroup,
+      findPaneCaptureRuntime,
     ],
   );
 
@@ -2236,40 +2582,44 @@ interface CreateWorkspaceOptions {
       if (!ws) return;
       const tab = ws.terminalTabs.find((t) => t.id === terminalTabId);
       if (!tab) return;
-      const capturePanel = tab.panels?.find(
-        (p): p is CapturePanel => p.kind === 'capture',
-      );
-
-      const status = getCaptureGroupStatus(
-        workspaceId,
-        terminalTabId,
-        capturePanel?.selectedCapturePaneIds,
-        paneCaptureRuntimesRef.current,
-      );
-      if (status === 'capturing' || status === 'paused') {
+      const targetPanes = resolveCaptureTargetPanes(ws);
+      const status = targetPanes.some((pane) => {
+        const runtime = findPaneCaptureRuntime(
+          workspaceId,
+          pane.terminalTabId,
+          pane.id,
+        );
+        return runtime?.status === 'capturing' || runtime?.status === 'paused';
+      });
+      if (status) {
         return;
       }
 
       updateWorkspace(workspaceId, (prev) => {
+        const nextScope = toggleCaptureTargetPane(
+          getCaptureTargetScope(prev),
+          paneId,
+          prev.panes.map((pane) => pane.id),
+        );
+        const nextSelectedIds =
+          nextScope.mode === 'all'
+            ? prev.panes.map((pane) => pane.id)
+            : nextScope.paneIds;
+        const currentIds = new Set(nextSelectedIds);
         const updatedTabs = prev.terminalTabs.map((t) => {
-          if (t.id !== terminalTabId) return t;
           const panel = t.panels?.find(
             (p): p is CapturePanel => p.kind === 'capture',
           );
           if (!panel) return t;
-
-          const currentSelected = new Set(panel.selectedCapturePaneIds ?? []);
-          if (currentSelected.has(paneId)) {
-            currentSelected.delete(paneId);
-          } else {
-            currentSelected.add(paneId);
-          }
+          const tabSelectedIds = t.panes
+            .filter((pane) => currentIds.has(pane.id))
+            .map((pane) => pane.id);
 
           const updatedPanels = (t.panels ?? []).map((p) =>
             p.id === panel.id
               ? {
                   ...p,
-                  selectedCapturePaneIds: Array.from(currentSelected),
+                  selectedCapturePaneIds: tabSelectedIds,
                 }
               : p,
           );
@@ -2283,10 +2633,14 @@ interface CreateWorkspaceOptions {
         return {
           ...prev,
           terminalTabs: updatedTabs,
+          capture: {
+            ...prev.capture,
+            targetScope: nextScope,
+          },
         };
       });
     },
-    [updateWorkspace],
+    [findPaneCaptureRuntime, updateWorkspace],
   );
 
   const handleSelectAllCapturePanes = useCallback(
@@ -2299,36 +2653,35 @@ interface CreateWorkspaceOptions {
       if (!ws) return;
       const tab = ws.terminalTabs.find((t) => t.id === terminalTabId);
       if (!tab) return;
-      const capturePanel = tab.panels?.find(
-        (p): p is CapturePanel => p.kind === 'capture',
-      );
-
-      const status = getCaptureGroupStatus(
-        workspaceId,
-        terminalTabId,
-        capturePanel?.selectedCapturePaneIds,
-        paneCaptureRuntimesRef.current,
-      );
-      if (status === 'capturing' || status === 'paused') {
+      const status = resolveCaptureTargetPanes(ws).some((pane) => {
+        const runtime = findPaneCaptureRuntime(
+          workspaceId,
+          pane.terminalTabId,
+          pane.id,
+        );
+        return runtime?.status === 'capturing' || runtime?.status === 'paused';
+      });
+      if (status) {
         return;
       }
 
       updateWorkspace(workspaceId, (prev) => {
+        const nextSelected = all ? prev.panes.map((pane) => pane.id) : [];
+        const selectedSet = new Set(nextSelected);
         const updatedTabs = prev.terminalTabs.map((t) => {
-          if (t.id !== terminalTabId) return t;
           const panel = t.panels?.find(
             (p): p is CapturePanel => p.kind === 'capture',
           );
           if (!panel) return t;
-
-          const allPaneIds = tab.panes.map((p) => p.id);
-          const nextSelected = all ? allPaneIds : [];
+          const tabSelectedIds = t.panes
+            .filter((pane) => selectedSet.has(pane.id))
+            .map((pane) => pane.id);
 
           const updatedPanels = (t.panels ?? []).map((p) =>
             p.id === panel.id
               ? {
                   ...p,
-                  selectedCapturePaneIds: nextSelected,
+                  selectedCapturePaneIds: tabSelectedIds,
                 }
               : p,
           );
@@ -2342,10 +2695,16 @@ interface CreateWorkspaceOptions {
         return {
           ...prev,
           terminalTabs: updatedTabs,
+          capture: {
+            ...prev.capture,
+            targetScope: all
+              ? { mode: 'all' as const }
+              : { mode: 'explicit' as const, paneIds: [] },
+          },
         };
       });
     },
-    [updateWorkspace],
+    [findPaneCaptureRuntime, updateWorkspace],
   );
 
   const handleRetryCapture = useCallback(
@@ -2371,6 +2730,7 @@ interface CreateWorkspaceOptions {
         runtime.activeBlockId = null;
         runtime.activeBlockParser = null;
         runtime.inputBuffer = '';
+        runtime.pendingExecutionInput = null;
         runtime.status = 'capturing';
         runtime.captureSessionId = nextCaptureSessionId;
         runtime.currentBatch = newBatch;
@@ -2429,38 +2789,29 @@ interface CreateWorkspaceOptions {
     (workspaceId: LogicalWorkspaceId, blockId: string) => {
       const ws = workspacesRef.current.find((w) => w.id === workspaceId);
       if (!ws) return;
-      const activeTabId = ws.activeTerminalTabId;
-      const activeTab = ws.terminalTabs.find((t) => t.id === activeTabId);
-      const activePaneId = activeTab?.activePaneId;
 
       updateWorkspace(workspaceId, (prev) => {
-        const next = new Set(prev.selection.selectedBlockIds);
-        if (next.has(blockId)) {
-          next.delete(blockId);
-        } else {
-          next.add(blockId);
-        }
-
-        const updatedPanes = activePaneId
-          ? prev.panes.map((p) =>
-              p.id === activePaneId
-                ? {
-                    ...p,
-                    selection: {
-                      selectedBlockIds: next,
-                      updatedAt: Date.now(),
-                    },
-                  }
-                : p,
-            )
-          : prev.panes;
+        const updatedAt = Date.now();
+        const availableBlockIds = new Set(
+          prev.capture.blocks.map((block) => block.id),
+        );
+        const next = toggleSelectedBlockId(
+          prev.selection.selectedBlockIds,
+          blockId,
+          availableBlockIds,
+        );
+        const synchronized = synchronizeBlockSelection(
+          prev.panes,
+          next,
+          updatedAt,
+        );
 
         return {
           ...prev,
-          panes: updatedPanes,
+          panes: synchronized.panes,
           selection: {
-            selectedBlockIds: next,
-            updatedAt: Date.now(),
+            selectedBlockIds: synchronized.selectedBlockIds,
+            updatedAt,
           },
         };
       });
@@ -2470,42 +2821,25 @@ interface CreateWorkspaceOptions {
 
   const handleSelectAllVisible = useCallback(
     (workspaceId: LogicalWorkspaceId) => {
-      const ws = workspacesRef.current.find((w) => w.id === workspaceId);
-      if (!ws) return;
-      const activeTabId = ws.activeTerminalTabId;
-      const activeTab = ws.terminalTabs.find((t) => t.id === activeTabId);
-      const activePaneId = activeTab?.activePaneId;
-
-      const tabBlockIds = ws.capture.blocks
-        .filter(
-          (b) =>
-            (b.terminalPaneId && activePaneId && b.terminalPaneId === activePaneId) ||
-            b.terminalTabId === activeTabId ||
-            !b.terminalTabId,
-        )
-        .map((b) => b.id);
+      if (!workspacesRef.current.some((w) => w.id === workspaceId)) return;
 
       updateWorkspace(workspaceId, (prev) => {
-        const updatedPanes = activePaneId
-          ? prev.panes.map((p) =>
-              p.id === activePaneId
-                ? {
-                    ...p,
-                    selection: {
-                      selectedBlockIds: new Set(tabBlockIds),
-                      updatedAt: Date.now(),
-                    },
-                  }
-                : p,
-            )
-          : prev.panes;
+        const updatedAt = Date.now();
+        const next = selectAllBlockIds(
+          prev.capture.blocks.map((block) => block.id),
+        );
+        const synchronized = synchronizeBlockSelection(
+          prev.panes,
+          next,
+          updatedAt,
+        );
 
         return {
           ...prev,
-          panes: updatedPanes,
+          panes: synchronized.panes,
           selection: {
-            selectedBlockIds: new Set(tabBlockIds),
-            updatedAt: Date.now(),
+            selectedBlockIds: synchronized.selectedBlockIds,
+            updatedAt,
           },
         };
       });
@@ -2515,33 +2849,23 @@ interface CreateWorkspaceOptions {
 
   const handleClearSelection = useCallback(
     (workspaceId: LogicalWorkspaceId) => {
-      const ws = workspacesRef.current.find((w) => w.id === workspaceId);
-      if (!ws) return;
-      const activeTabId = ws.activeTerminalTabId;
-      const activeTab = ws.terminalTabs.find((t) => t.id === activeTabId);
-      const activePaneId = activeTab?.activePaneId;
+      if (!workspacesRef.current.some((w) => w.id === workspaceId)) return;
 
       updateWorkspace(workspaceId, (prev) => {
-        const updatedPanes = activePaneId
-          ? prev.panes.map((p) =>
-              p.id === activePaneId
-                ? {
-                    ...p,
-                    selection: {
-                      selectedBlockIds: new Set<string>(),
-                      updatedAt: Date.now(),
-                    },
-                  }
-                : p,
-            )
-          : prev.panes;
+        const updatedAt = Date.now();
+        const next = selectAllBlockIds([]);
+        const synchronized = synchronizeBlockSelection(
+          prev.panes,
+          next,
+          updatedAt,
+        );
 
         return {
           ...prev,
-          panes: updatedPanes,
+          panes: synchronized.panes,
           selection: {
-            selectedBlockIds: new Set<string>(),
-            updatedAt: Date.now(),
+            selectedBlockIds: synchronized.selectedBlockIds,
+            updatedAt,
           },
         };
       });
@@ -2606,18 +2930,8 @@ interface CreateWorkspaceOptions {
       const ws = workspacesRef.current.find((w) => w.id === workspaceId);
       if (!ws) return;
 
-      const activeTabId = ws.activeTerminalTabId;
-      const activeTab = ws.terminalTabs.find((t) => t.id === activeTabId);
-      const activePane = activeTab
-        ? ws.panes.find((p) => p.id === activeTab.activePaneId)
-        : null;
-
       const selectedBlocks = ws.capture.blocks.filter(
-        (b) =>
-          ws.selection.selectedBlockIds.has(b.id) &&
-          ((b.terminalPaneId && activePane && b.terminalPaneId === activePane.id) ||
-            b.terminalTabId === activeTabId ||
-            !b.terminalTabId),
+        (b) => ws.selection.selectedBlockIds.has(b.id),
       );
       if (selectedBlocks.length === 0) return;
 
@@ -2697,6 +3011,7 @@ interface CreateWorkspaceOptions {
       const nextBlocks = currentBlocks.filter(
         (b) => !blockIdsToRemove.has(b.id),
       );
+      const availableBlockIds = new Set(nextBlocks.map((b) => b.id));
 
       const remainingPaneIds = new Set(
         nextBlocks.map((b) => b.terminalPaneId).filter(Boolean),
@@ -2706,28 +3021,35 @@ interface CreateWorkspaceOptions {
       );
 
       updateWorkspace(workspaceId, (prev) => {
-        const nextSelected = new Set(prev.selection.selectedBlockIds);
-        for (const id of blockIdsToRemove) {
-          nextSelected.delete(id);
-        }
+        const updatedAt = Date.now();
+        const nextSelected = reconcileSelectedBlockIds(
+          prev.selection.selectedBlockIds,
+          availableBlockIds,
+        );
 
-        const updatedPanes = prev.panes.map((p) => {
+        const panesWithCaptureUpdates = prev.panes.map((p) => {
           const hasBlocks =
             remainingPaneIds.has(p.id) ||
             remainingTabIds.has(p.terminalTabId);
-          if (!hasBlocks && !p.capture.isListening) {
-            return {
-              ...p,
-              capture: {
-                ...p.capture,
-                isListening: false,
-                hasRetainedData: false,
-                currentBatchId: null,
-              },
-            };
-          }
-          return p;
+          return {
+            ...p,
+            ...(!hasBlocks && !p.capture.isListening
+              ? {
+                  capture: {
+                    ...p.capture,
+                    isListening: false,
+                    hasRetainedData: false,
+                    currentBatchId: null,
+                  },
+                }
+              : {}),
+          };
         });
+        const synchronized = synchronizeBlockSelection(
+          panesWithCaptureUpdates,
+          nextSelected,
+          updatedAt,
+        );
 
         const updatedTabs = prev.terminalTabs.map((t) => {
           if (!remainingTabIds.has(t.id) && !t.capture?.isListening) {
@@ -2747,14 +3069,14 @@ interface CreateWorkspaceOptions {
         return {
           ...prev,
           terminalTabs: updatedTabs,
-          panes: updatedPanes,
+          panes: synchronized.panes,
           capture: {
             ...prev.capture,
             blocks: nextBlocks,
           },
           selection: {
-            selectedBlockIds: nextSelected,
-            updatedAt: Date.now(),
+            selectedBlockIds: synchronized.selectedBlockIds,
+            updatedAt,
           },
         };
       });
@@ -2799,13 +3121,8 @@ interface CreateWorkspaceOptions {
       terminalTabId: TerminalTabId,
       terminalPaneId: TerminalPaneId,
       data: string,
-      options?: {
-        executionId?: string;
-        intent?: ExecutionIntent;
-        verificationRunId?: string;
-        verificationCriterionId?: string;
-        agentRunId?: string;
-        agentExecutionLinkSource?: string;
+      options?: PendingExecutionInput & {
+        trustedBoundary?: boolean;
       },
     ) => {
       const ws = workspacesRef.current.find((w) => w.id === workspaceId);
@@ -2822,6 +3139,7 @@ interface CreateWorkspaceOptions {
       if (!runtime || runtime.status !== 'capturing' || !runtime.currentBatch) {
         return;
       }
+      const currentBatch = runtime.currentBatch;
 
       // Section 12: Protect active verification pane from manual stdin corruption during command execution
       const activeVerification = verificationRuntimeRef.current;
@@ -2835,20 +3153,34 @@ interface CreateWorkspaceOptions {
         return;
       }
 
-      for (let i = 0; i < data.length; i++) {
-        const char = data[i];
+      const terminalLifecycleState =
+        terminalRuntimeRegistry.get(terminalPaneId)?.shellLifecycleState;
+      let physicalData = data;
+      let physicalOptions = options;
+      if (
+        terminalLifecycleState &&
+        terminalLifecycleState !== runtime.shellLifecycleState
+      ) {
+        const fallbackReplay = transitionShellLifecycle(
+          runtime,
+          terminalLifecycleState,
+        );
+        if (fallbackReplay) {
+          physicalData = fallbackReplay.data + data;
+          physicalOptions = options ?? fallbackReplay.pendingInput ?? undefined;
+        }
+      }
 
-        if (char === '\r' || char === '\n') {
-          if (char === '\r' && i + 1 < data.length && data[i + 1] === '\n') {
-            i++;
-          }
+      if (
+        runtime.shellLifecycleState !== 'fallback' &&
+        !options?.trustedBoundary
+      ) {
+        bufferPendingTerminalInput(runtime, data, options);
+        return;
+      }
 
-          const rawCommand = runtime.inputBuffer;
-          runtime.inputBuffer = '';
-
-          const cleanCommand = normalizeCommand(rawCommand);
-
-          // Clear is a terminal display reset, NOT a transcript or capture-history deletion.
+      const commitCommand = (rawCommand: string, cleanCommand: string) => {
+        // Clear is a terminal display reset, NOT a transcript or capture-history deletion.
           if (isTerminalClearCommand(cleanCommand)) {
             cancelPendingFlush(workspaceId, terminalTabId, terminalPaneId);
 
@@ -2858,11 +3190,13 @@ interface CreateWorkspaceOptions {
 
             runtime.activeBlockId = null;
             runtime.activeBlockParser = null;
+            runtime.sanitizer?.reset();
 
             // Finalize previous active block output if one was in flight
             if (prevActiveId && prevParser) {
               const prevFinalOutput = splitPromptTail(
                 prevParser.buffer,
+                { trustedBoundary: true },
               ).substantiveOutput;
 
               const currentWs = workspacesRef.current.find(
@@ -2886,7 +3220,7 @@ interface CreateWorkspaceOptions {
               const updated: TranscriptBlock = {
                 ...(existingBlock ?? {
                   id: prevActiveId,
-                  batchId: runtime.currentBatch.id,
+                  batchId: currentBatch.id,
                   command: prevParser.command,
                   rawCommand: prevParser.command,
                   startedAt: now,
@@ -2898,7 +3232,7 @@ interface CreateWorkspaceOptions {
                   workspaceId,
                   terminalTabId,
                   terminalPaneId,
-                  terminalLabelAtCapture: tab.label,
+                  terminalLabelAtCapture: getTerminalTabDisplayName(tab),
                 }),
                 output: finalOut,
                 completedAt: now,
@@ -2949,7 +3283,7 @@ interface CreateWorkspaceOptions {
               }
             }
 
-            continue;
+            return;
           }
 
           // Do not create a block for blank Enter or pure cursor/control keystrokes
@@ -2959,9 +3293,9 @@ interface CreateWorkspaceOptions {
             const prevActiveId = runtime.activeBlockId;
             const prevParser = runtime.activeBlockParser;
             const now = Date.now();
-            const batchId = runtime.currentBatch.id;
+            const batchId = currentBatch.id;
             const blockId =
-              options?.executionId ??
+              physicalOptions?.executionId ??
               `block-${now}-${Math.random().toString(36).slice(2, 7)}`;
 
             const targetPane = tab.panes.find((p) => p.id === terminalPaneId);
@@ -2979,11 +3313,12 @@ interface CreateWorkspaceOptions {
               executionId: blockId,
               actorId: DEFAULT_LOCAL_HUMAN_ACTOR.id,
               executionSource: 'terminal',
-              intent: options?.intent ?? 'interactive',
-              verificationRunId: options?.verificationRunId,
-              verificationCriterionId: options?.verificationCriterionId,
-              agentRunId: options?.agentRunId,
-              agentExecutionLinkSource: options?.agentExecutionLinkSource,
+              intent: physicalOptions?.intent ?? 'interactive',
+              verificationRunId: physicalOptions?.verificationRunId,
+              verificationCriterionId: physicalOptions?.verificationCriterionId,
+              agentRunId: physicalOptions?.agentRunId,
+              agentExecutionLinkSource:
+                physicalOptions?.agentExecutionLinkSource,
               executionState: 'running',
               lifecycle: 'running',
               outcome: 'unknown',
@@ -3006,7 +3341,7 @@ interface CreateWorkspaceOptions {
               workspaceId,
               terminalTabId,
               terminalPaneId,
-              terminalLabelAtCapture: tab.label,
+              terminalLabelAtCapture: getTerminalTabDisplayName(tab),
               sourcePaneId: terminalPaneId,
               sourcePaneOrdinal: targetPane?.stableOrdinal ?? 1,
               sourcePaneAccentId: targetPane?.accentId ?? 'blue',
@@ -3020,9 +3355,10 @@ interface CreateWorkspaceOptions {
               buffer: '',
               echoChecked: false,
             };
+            runtime.sanitizer?.reset();
 
             const prevFinalOutput = prevParser
-              ? splitPromptTail(prevParser.buffer).substantiveOutput
+              ? splitPromptTail(prevParser.buffer, { trustedBoundary: true }).substantiveOutput
               : undefined;
 
             const currentWs = workspacesRef.current.find(
@@ -3060,7 +3396,7 @@ interface CreateWorkspaceOptions {
                   workspaceId,
                   terminalTabId,
                   terminalPaneId,
-                  terminalLabelAtCapture: tab.label,
+                  terminalLabelAtCapture: getTerminalTabDisplayName(tab),
                 }),
                 output: finalOut,
                 completedAt: now,
@@ -3096,8 +3432,6 @@ interface CreateWorkspaceOptions {
                 return b;
               });
               const nextBlocks = [...updatedBlocks, newBlock];
-              const nextSelected = new Set(prev.selection.selectedBlockIds);
-              nextSelected.add(blockId);
 
               const updatedPanes = prev.panes.map((p) =>
                 p.id === terminalPaneId
@@ -3135,10 +3469,6 @@ interface CreateWorkspaceOptions {
                   ...prev.capture,
                   blocks: nextBlocks,
                 },
-                selection: {
-                  selectedBlockIds: nextSelected,
-                  updatedAt: now,
-                },
               };
             });
 
@@ -3158,6 +3488,32 @@ interface CreateWorkspaceOptions {
               handleVerificationExecutionCompletedRef.current?.(prevFinalizedBlock);
             }
           }
+      };
+
+      if (options?.trustedBoundary) {
+        const rawCommand = data.endsWith('\r') ? data.slice(0, -1) : data;
+        const cleanCommand = normalizeCommand(rawCommand);
+        commitCommand(rawCommand, cleanCommand);
+        return;
+      }
+
+      for (let i = 0; i < physicalData.length; i++) {
+        const char = physicalData[i];
+
+        if (char === '\r' || char === '\n') {
+          if (
+            char === '\r' &&
+            i + 1 < physicalData.length &&
+            physicalData[i + 1] === '\n'
+          ) {
+            i++;
+          }
+
+          const rawCommand = runtime.inputBuffer;
+          runtime.inputBuffer = '';
+
+          const cleanCommand = normalizeCommand(rawCommand);
+          commitCommand(rawCommand, cleanCommand);
         } else if (char === '\x7f' || char === '\b') {
           runtime.inputBuffer = runtime.inputBuffer.slice(0, -1);
         } else if (char === '\x03') {
@@ -3165,9 +3521,15 @@ interface CreateWorkspaceOptions {
         } else if (char === '\x1b') {
           // Skip ANSI escape sequences
           let j = i + 1;
-          if (j < data.length && (data[j] === '[' || data[j] === 'O')) {
+          if (
+            j < physicalData.length &&
+            (physicalData[j] === '[' || physicalData[j] === 'O')
+          ) {
             j++;
-            while (j < data.length && !/[A-Za-z~]/.test(data[j])) {
+            while (
+              j < physicalData.length &&
+              !/[A-Za-z~]/.test(physicalData[j])
+            ) {
               j++;
             }
           }
@@ -3201,14 +3563,23 @@ interface CreateWorkspaceOptions {
         terminalPaneId,
       );
       const runtime = paneCaptureRuntimesRef.current.get(runtimeKey);
-      if (!runtime || runtime.status !== 'capturing') return;
+      if (!runtime) return;
+
+      if (events?.some((ev) => ev.trust === 'trusted')) {
+        transitionShellLifecycle(runtime, 'trusted');
+      }
+
+      if (runtime.status !== 'capturing') return;
 
       const currentActiveId = runtime.activeBlockId;
       const parser = runtime.activeBlockParser;
 
       if (currentActiveId && parser && bytes.length > 0) {
         const rawChunk = textChunk ?? runtime.textDecoder.decode(bytes, { stream: true });
-        const sanitized = sanitizeTranscriptChunk(rawChunk);
+        const sanitizer =
+          runtime.sanitizer ??
+          (runtime.sanitizer = new StreamingTranscriptSanitizer());
+        const sanitized = sanitizer.sanitize(rawChunk);
         if (sanitized) {
           parser.buffer += sanitized;
 
@@ -3265,10 +3636,28 @@ interface CreateWorkspaceOptions {
         }
       }
 
-      // Process shell integration events to drive Execution lifecycle, outcome, and native policy
+      // Process shell integration events to drive Execution lifecycle and outcome.
       if (events && events.length > 0) {
         for (const ev of events) {
           if (ev.type === 'command-start') {
+            if (ev.trust === 'trusted') {
+              const reconciliation = consumeTrustedCommandStart(runtime);
+              const logicalCommand =
+                ev.command ?? reconciliation.bufferedInput;
+              if (logicalCommand) {
+                handleTerminalInput(
+                  workspaceId,
+                  terminalTabId,
+                  terminalPaneId,
+                  logicalCommand,
+                  {
+                    ...reconciliation.pendingInput,
+                    trustedBoundary: true,
+                  },
+                );
+              }
+            }
+
             if (runtime.activeBlockId) {
               const activeId = runtime.activeBlockId;
               const isTrusted = ev.trust === 'trusted';
@@ -3282,7 +3671,6 @@ interface CreateWorkspaceOptions {
                         shellIntegrationLevel: (isTrusted
                           ? 'rich'
                           : b.shellIntegrationLevel ?? 'basic') as ShellIntegrationLevel,
-
                       }
                     : b,
                 );
@@ -3305,8 +3693,15 @@ interface CreateWorkspaceOptions {
               cancelPendingFlush(workspaceId, terminalTabId, terminalPaneId);
 
               if (activeId && activeParser) {
+                const leftover = runtime.sanitizer?.flush() ?? '';
+                if (leftover) {
+                  activeParser.buffer += leftover;
+                }
+                runtime.sanitizer?.reset();
+
                 const substantiveOut = splitPromptTail(
                   activeParser.buffer,
+                  { trustedBoundary: true },
                 ).substantiveOutput;
                 const exitCode = ev.exitCode;
                 const outcome: ExecutionOutcome =
@@ -3346,7 +3741,7 @@ interface CreateWorkspaceOptions {
                     workspaceId,
                     terminalTabId,
                     terminalPaneId,
-                    terminalLabelAtCapture: tab.label,
+                    terminalLabelAtCapture: getTerminalTabDisplayName(tab),
                   }),
                   output: finalOut,
                   completedAt: now,
@@ -3393,6 +3788,7 @@ interface CreateWorkspaceOptions {
 
                 runtime.activeBlockId = null;
                 runtime.activeBlockParser = null;
+                runtime.sanitizer?.reset();
 
                 // Immediate persistence on command completion (HISTORY-024C)
                 savePersistedWorkspaceState({
@@ -3438,7 +3834,7 @@ interface CreateWorkspaceOptions {
       console.warn('[Capture] Terminal output handling failed safely:', err);
     }
   },
-  [cancelPendingFlush, updateWorkspace, activeMonitorView],
+  [cancelPendingFlush, handleTerminalInput, updateWorkspace, activeMonitorView],
 );
 
   const handleStatusChange = useCallback(
@@ -3449,6 +3845,30 @@ interface CreateWorkspaceOptions {
       status: TerminalSessionStatus,
       info: TerminalSessionInfo | null,
     ) => {
+      const runtimeKey = getPaneCaptureRuntimeKey(
+        workspaceId,
+        terminalTabId,
+        terminalPaneId,
+      );
+      const captureRuntime = paneCaptureRuntimesRef.current.get(runtimeKey);
+      const terminalLifecycleState =
+        terminalRuntimeRegistry.get(terminalPaneId)?.shellLifecycleState;
+      if (captureRuntime && terminalLifecycleState) {
+        const fallbackReplay = transitionShellLifecycle(
+          captureRuntime,
+          terminalLifecycleState,
+        );
+        if (fallbackReplay) {
+          handleTerminalInput(
+            workspaceId,
+            terminalTabId,
+            terminalPaneId,
+            fallbackReplay.data,
+            fallbackReplay.pendingInput ?? undefined,
+          );
+        }
+      }
+
       updateWorkspace(workspaceId, (prev) => ({
         ...prev,
         panes: prev.panes.map((p) =>
@@ -3525,7 +3945,7 @@ interface CreateWorkspaceOptions {
         ),
       }));
     },
-    [updateWorkspace],
+    [handleTerminalInput, updateWorkspace],
   );
 
   const handleSessionEnded = useCallback(
@@ -3581,7 +4001,7 @@ interface CreateWorkspaceOptions {
             workspaceId,
             terminalTabId,
             terminalPaneId,
-            terminalLabelAtCapture: tab.label,
+            terminalLabelAtCapture: getTerminalTabDisplayName(tab),
           }),
           output: finalizedOutput,
           completedAt: now,
@@ -3662,7 +4082,6 @@ interface CreateWorkspaceOptions {
         cleanupPaneCaptureRuntime(runtime);
       }
       runtimes.clear();
-      runtimes.clear();
       if (terminalPaneToastTimeoutRef.current !== null) {
         window.clearTimeout(terminalPaneToastTimeoutRef.current);
         terminalPaneToastTimeoutRef.current = null;
@@ -3671,6 +4090,11 @@ interface CreateWorkspaceOptions {
         window.clearTimeout(transcriptFeedbackTimeoutRef.current);
         transcriptFeedbackTimeoutRef.current = null;
       }
+      if (saveTimeoutRef.current !== null) {
+        window.clearTimeout(saveTimeoutRef.current);
+        saveTimeoutRef.current = null;
+      }
+      terminalRuntimeRegistry.disposeAll();
     };
   }, []);
 
@@ -3698,11 +4122,28 @@ interface CreateWorkspaceOptions {
     ? workspaces.find((w) => w.id === pendingDeleteWorkspaceId) ?? null
     : null;
 
+  const pendingResetWorkspace = pendingResetWorkspaceId
+    ? workspaces.find((w) => w.id === pendingResetWorkspaceId) ?? null
+    : null;
+
   const activeCapturePanel = activeTerminalTab?.panels?.find(
     (p): p is CapturePanel => p.kind === 'capture',
   );
 
-  const aggregateCaptureStatus = activeCapturePanel?.groupStatus ?? 'ready';
+  const activeCaptureTargetPanes = activeWorkspace
+    ? resolveCaptureTargetPanes(activeWorkspace)
+    : [];
+  const activeCaptureTargetIds = activeCaptureTargetPanes.map((pane) => pane.id);
+  const aggregateCaptureStatus = activeCaptureTargetPanes.some(
+    (pane) => pane.capture.isListening,
+  )
+    ? 'capturing'
+    : activeCapturePanel?.groupStatus === 'paused'
+      ? 'paused'
+      : activeCapturePanel?.groupStatus ?? 'ready';
+  const listeningCapturePaneCount = activeCaptureTargetPanes.filter(
+    (pane) => pane.capture.isListening,
+  ).length;
 
   const isTargetSelectorLocked =
     aggregateCaptureStatus === 'capturing' || aggregateCaptureStatus === 'paused';
@@ -4206,7 +4647,9 @@ interface CreateWorkspaceOptions {
           workspaceId,
           terminalTabId,
           terminalPaneId,
-          terminalLabelAtCapture: tab?.label ?? 'Terminal 1',
+          terminalLabelAtCapture: tab
+            ? getTerminalTabDisplayName(tab)
+            : 'Terminal',
           sourcePaneId: terminalPaneId,
           sourcePaneOrdinal: pane?.stableOrdinal ?? 1,
           sourcePaneAccentId: pane?.accentId ?? 'blue',
@@ -4421,6 +4864,7 @@ interface CreateWorkspaceOptions {
           criterionResults: finalResults,
           completedAt: Date.now(),
         };
+        inFlightVerificationRunIdRef.current = null;
         verificationRuntimeRef.current = null;
         setIsVerificationStopping(false);
         setIsVerificationStopTimeout(false);
@@ -4474,6 +4918,7 @@ interface CreateWorkspaceOptions {
         const targetWsId = runtime.workspaceId;
         const targetPaneId = runtime.terminalPaneId;
 
+        inFlightVerificationRunIdRef.current = null;
         verificationRuntimeRef.current = null;
         setIsVerificationStopping(false);
         setIsVerificationStopTimeout(false);
@@ -4680,6 +5125,8 @@ interface CreateWorkspaceOptions {
         terminalRefs.current.get(paneId)?.getSessionId() ??
         activePane?.session?.sessionId;
 
+      inFlightVerificationRunIdRef.current = newRun.id;
+
       (async () => {
         let beforeSnapshot: RepositorySnapshot | null = null;
         try {
@@ -4697,6 +5144,21 @@ interface CreateWorkspaceOptions {
           }
         } catch (err) {
           console.warn('[ChangeAttribution] Pre-verification snapshot failed safely:', err);
+        }
+
+        // Pre-dispatch ownership and lifecycle guard (HARDEN-003C Section 11)
+        if (inFlightVerificationRunIdRef.current !== newRun.id) {
+          return;
+        }
+        const currentWs = workspacesRef.current.find((w) => w.id === wsId);
+        if (!currentWs) {
+          inFlightVerificationRunIdRef.current = null;
+          return;
+        }
+        const currentTab = currentWs.terminalTabs.find((t) => t.id === tab.id);
+        if (!currentTab || !currentTab.paneIds.includes(paneId)) {
+          inFlightVerificationRunIdRef.current = null;
+          return;
         }
 
         verificationRuntimeRef.current = {
@@ -4750,6 +5212,9 @@ interface CreateWorkspaceOptions {
       const wsId = workspaceId ?? activeWorkspaceIdRef.current;
       const runtime = verificationRuntimeRef.current;
       if (!runtime || runtime.workspaceId !== wsId) {
+        if (inFlightVerificationRunIdRef.current) {
+          inFlightVerificationRunIdRef.current = null;
+        }
         return;
       }
 
@@ -4788,6 +5253,7 @@ interface CreateWorkspaceOptions {
         }
         setIsVerificationStopping(false);
         setIsVerificationStopTimeout(false);
+        inFlightVerificationRunIdRef.current = null;
         verificationRuntimeRef.current = null;
 
         setWorkspaces((prev) => {
@@ -5251,6 +5717,7 @@ interface CreateWorkspaceOptions {
   );
 
   const [isCollectingRepo, setIsCollectingRepo] = useState(false);
+  const activeCollectionRequestRef = useRef<Map<string, number>>(new Map());
 
   const handleRefreshRepositoryEvidence = useCallback(
     async (workspaceId?: string) => {
@@ -5261,12 +5728,22 @@ interface CreateWorkspaceOptions {
       const repoRoot = ws.repository?.rootPath;
       if (!repoRoot) return;
 
+      const requestId = (activeCollectionRequestRef.current.get(wsId) ?? 0) + 1;
+      activeCollectionRequestRef.current.set(wsId, requestId);
+
       setIsCollectingRepo(true);
       try {
         const { run, snapshot } = await collectRepositoryEvidence({
           workspaceId: wsId,
           repositoryRoot: repoRoot,
         });
+
+        if (activeCollectionRequestRef.current.get(wsId) !== requestId) {
+          return;
+        }
+        if (!workspacesRef.current.some((w) => w.id === wsId)) {
+          return;
+        }
 
         updateWorkspace(wsId, (prev) => {
           const nextSnapshots = snapshot
@@ -5280,6 +5757,12 @@ interface CreateWorkspaceOptions {
           };
         });
       } catch (err) {
+        if (activeCollectionRequestRef.current.get(wsId) !== requestId) {
+          return;
+        }
+        if (!workspacesRef.current.some((w) => w.id === wsId)) {
+          return;
+        }
         console.warn('Repository evidence collection failed:', err);
         const errMsg = err instanceof Error ? err.message : String(err);
         const failedRun = {
@@ -5297,7 +5780,9 @@ interface CreateWorkspaceOptions {
           latestCollectionRun: failedRun,
         }));
       } finally {
-        setIsCollectingRepo(false);
+        if (activeCollectionRequestRef.current.get(wsId) === requestId) {
+          setIsCollectingRepo(false);
+        }
       }
     },
     [updateWorkspace],
@@ -5367,21 +5852,31 @@ interface CreateWorkspaceOptions {
     ],
   );
 
-
-
   const transcriptProps: PanelLayoutTranscriptProps = {
     blocks: activeWorkspace?.capture.blocks ?? [],
     currentBatchId: currentBatchId,
     currentBatchBlockCount: currentBatchBlocks.length,
     selectedBlockIds:
-      activeTerminalPane?.selection.selectedBlockIds.size &&
-      activeTerminalPane.selection.selectedBlockIds.size > 0
-        ? activeTerminalPane.selection.selectedBlockIds
-        : activeWorkspace?.selection.selectedBlockIds ?? new Set<string>(),
+      activeWorkspace?.selection.selectedBlockIds ?? new Set<string>(),
     feedback: transcriptFeedback,
     isListening: aggregateCaptureStatus === 'capturing',
     captureStatus: aggregateCaptureStatus,
     isTargetSelectorLocked,
+    availableCapturePanes:
+      activeWorkspace?.terminalTabs.flatMap((tab) =>
+        tab.panes.map((pane) => ({
+          id: pane.id,
+          stableOrdinal: pane.stableOrdinal,
+          accentId: pane.accentId,
+          terminalTabColorKey: getTerminalTabColorKey(tab),
+          label: getTerminalTabDisplayName(tab),
+        })),
+      ) ?? [],
+    selectedCapturePaneIds: activeCaptureTargetIds,
+    captureTargetMode: activeWorkspace
+      ? getCaptureTargetScope(activeWorkspace).mode
+      : 'all',
+    listeningCapturePaneCount,
     onToggleListening: () =>
       activeWorkspace &&
       activeTerminalTab &&
@@ -5497,11 +5992,6 @@ interface CreateWorkspaceOptions {
     isCollectingRepositoryEvidence: isCollectingRepo,
     onRefreshRepositoryEvidence: () => handleRefreshRepositoryEvidence(activeWorkspace?.id),
     changeAttributions: activeWorkspace?.changeAttributions ?? [],
-    agentRuns: [],
-    activeAgentRun: null,
-    onVerifyAgentRun: () => {},
-    onCancelAgentRun: () => {},
-    onStartAgentRun: () => {},
     activeMonitorView,
     onSelectMonitorView: (view: MonitorView) => {
       if (isMonitorViewEnabled(view, capabilities)) {
@@ -5542,6 +6032,7 @@ interface CreateWorkspaceOptions {
         onOpenFolder={handleOpenFolder}
         onRequestDeleteWorkspace={requestDeleteWorkspace}
         onRenameWorkspace={renameWorkspace}
+        onReorderWorkspace={reorderWorkspace}
       />
 
       {/* Global Warning Banner: Active Application/Workspace Warning Stack */}
@@ -5559,6 +6050,14 @@ interface CreateWorkspaceOptions {
         onSelectTab={handleSelectTerminalTab}
         onCreateTab={handleCreateTerminalTab}
         onCloseTab={handleCloseTerminalTab}
+        onReorderTab={(draggedTabId, targetTabId, placement) =>
+          reorderTerminalTab(
+            activeWorkspace.id,
+            draggedTabId,
+            targetTabId,
+            placement,
+          )
+        }
         onRenameTab={(tabId, name) =>
           renameTerminalTab(activeWorkspace.id, tabId, name)
         }
@@ -5576,6 +6075,9 @@ interface CreateWorkspaceOptions {
             activeWorkspace.activeTerminalTabId,
           )
         }
+        onResetWorkspace={handleRequestResetWorkspace}
+        isResetBlocked={isResetBlocked}
+        resetBlockReason={resetBlockReason}
         onOpenShortcutSettings={() => setIsShortcutSettingsOpen(true)}
       />
 
@@ -5668,6 +6170,15 @@ interface CreateWorkspaceOptions {
           workspace={pendingDeleteWorkspace}
           onCancel={() => setPendingDeleteWorkspaceId(null)}
           onConfirm={confirmDeleteWorkspace}
+        />
+      )}
+
+      {/* Reset Workspace Confirmation Modal */}
+      {pendingResetWorkspace && (
+        <WorkspaceResetModal
+          workspace={pendingResetWorkspace}
+          onCancel={() => setPendingResetWorkspaceId(null)}
+          onConfirm={handleConfirmResetWorkspace}
         />
       )}
 

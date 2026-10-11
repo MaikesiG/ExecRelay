@@ -6,8 +6,8 @@ mod terminal;
 
 use collector::collector_run_command;
 use terminal::{
-    terminal_close_session, terminal_create_session, terminal_list_sessions, terminal_resize,
-    terminal_session_info, terminal_write, TerminalSessionManager,
+    terminal_close_session, terminal_create_session, terminal_debug_trace, terminal_list_sessions,
+    terminal_resize, terminal_session_info, terminal_write, TerminalSessionManager,
 };
 
 #[tauri::command]
@@ -69,6 +69,7 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             terminal_create_session,
             terminal_write,
+            terminal_debug_trace,
             terminal_resize,
             terminal_close_session,
             terminal_session_info,

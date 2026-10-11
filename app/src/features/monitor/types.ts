@@ -10,8 +10,6 @@ export type MonitorFeedbackSource =
   | 'evidence'
   | 'repository'
   | 'verification'
-  | 'agents'
-  | 'governance'
   | 'clipboard'
   | 'system';
 
@@ -21,6 +19,7 @@ export interface MonitorFeedback {
   source: MonitorFeedbackSource;
   title: string;
   message?: string;
+  dedupeKey?: string;
   createdAt: number;
   dismissible?: boolean;
   durationMs?: number;
@@ -31,6 +30,7 @@ export interface MonitorFeedbackInput {
   source: MonitorFeedbackSource;
   title: string;
   message?: string;
+  dedupeKey?: string;
   dismissible?: boolean;
   durationMs?: number;
 }

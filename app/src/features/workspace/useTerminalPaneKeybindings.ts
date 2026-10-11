@@ -1,6 +1,9 @@
 import { useEffect, useRef } from 'react';
 import type { LogicalWorkspace } from './types';
 import type { TerminalPaneToastMessage } from '../warnings/types';
+import { ShortcutRegistry, defaultShortcutRegistry } from '../shortcuts/shortcutRegistry';
+import { isTerminalCommand } from '../shortcuts/types';
+import { findDirectionalPaneId } from './shortcutNavigation';
 
 export type PaneShortcutAction =
   | 'splitRight'
@@ -26,6 +29,10 @@ export function isNonTerminalInput(el: Element | null): boolean {
   return false;
 }
 
+/**
+ * Pure fallback matching function for terminal pane shortcut actions.
+ * Preserved for backward-compatible testing and standalone evaluations.
+ */
 export function matchesPaneShortcut(
   event: KeyboardEvent,
   isMac: boolean,
@@ -67,8 +74,8 @@ export function matchesPaneShortcut(
       return 'closePane';
     }
 
-    // macOS: Cmd + Option + Arrow Keys -> Directional Focus
-    if (event.metaKey && event.altKey && !event.ctrlKey && !event.shiftKey) {
+    // macOS: Ctrl + Shift + Arrow Keys -> Directional Focus
+    if (!event.metaKey && !event.altKey && event.ctrlKey && event.shiftKey) {
       if (code === 'ArrowLeft' || key === 'ArrowLeft') {
         return 'focusLeft';
       }
@@ -140,6 +147,7 @@ export interface UseTerminalPaneKeybindingsOptions {
   activeWorkspaceId: string | null;
   workspaces: ReadonlyArray<LogicalWorkspace>;
   isModalOpen: boolean;
+  registry?: ShortcutRegistry;
   onSplitRight: (
     workspaceId: string,
     terminalTabId: string,
@@ -186,6 +194,11 @@ export function useTerminalPaneKeybindings(
         return;
       }
 
+      // 2b. Guard against event.repeat spam for structural actions
+      if (event.repeat) {
+        return;
+      }
+
       // 3. Guard against active modal dialogs
       if (
         optionsRef.current.isModalOpen ||
@@ -213,11 +226,37 @@ export function useTerminalPaneKeybindings(
         return;
       }
 
-      // 6. Check platform shortcut match
-      const isMac =
-        typeof navigator !== 'undefined' &&
-        /Mac|iPod|iPhone|iPad/.test(navigator.userAgent);
-      const action = matchesPaneShortcut(event, isMac);
+      // 6. Check configurable shortcut match via Registry
+      const registry = optionsRef.current.registry ?? defaultShortcutRegistry;
+      const matchedCommand = registry.findCommandForEvent(event, 'terminal');
+      let action: PaneShortcutAction | null = null;
+
+      if (matchedCommand && isTerminalCommand(matchedCommand)) {
+        switch (matchedCommand) {
+          case 'terminal.split-right':
+            action = 'splitRight';
+            break;
+          case 'terminal.split-down':
+            action = 'splitDown';
+            break;
+          case 'terminal.close-pane':
+            action = 'closePane';
+            break;
+          case 'terminal.focus-left':
+            action = 'focusLeft';
+            break;
+          case 'terminal.focus-right':
+            action = 'focusRight';
+            break;
+          case 'terminal.focus-up':
+            action = 'focusUp';
+            break;
+          case 'terminal.focus-down':
+            action = 'focusDown';
+            break;
+        }
+      }
+
       if (!action) {
         return;
       }
@@ -257,7 +296,7 @@ export function useTerminalPaneKeybindings(
         return;
       }
 
-      // Prevent conflicting browser defaults
+      // Prevent conflicting browser defaults and stop propagation to terminal/PTY
       event.preventDefault();
       event.stopPropagation();
 
@@ -291,42 +330,26 @@ export function useTerminalPaneKeybindings(
         }
 
         case 'focusLeft': {
-          if (tab.panes.length === 2) {
-            const direction = tab.paneLayoutDirection ?? 'horizontal';
-            if (direction === 'horizontal') {
-              onSetActivePane(ws.id, tab.id, tab.panes[0].id);
-            }
-          }
+          const paneId = findDirectionalPaneId(tab, activePaneId, 'left');
+          if (paneId) onSetActivePane(ws.id, tab.id, paneId);
           break;
         }
 
         case 'focusRight': {
-          if (tab.panes.length === 2) {
-            const direction = tab.paneLayoutDirection ?? 'horizontal';
-            if (direction === 'horizontal') {
-              onSetActivePane(ws.id, tab.id, tab.panes[1].id);
-            }
-          }
+          const paneId = findDirectionalPaneId(tab, activePaneId, 'right');
+          if (paneId) onSetActivePane(ws.id, tab.id, paneId);
           break;
         }
 
         case 'focusUp': {
-          if (tab.panes.length === 2) {
-            const direction = tab.paneLayoutDirection ?? 'horizontal';
-            if (direction === 'vertical') {
-              onSetActivePane(ws.id, tab.id, tab.panes[0].id);
-            }
-          }
+          const paneId = findDirectionalPaneId(tab, activePaneId, 'up');
+          if (paneId) onSetActivePane(ws.id, tab.id, paneId);
           break;
         }
 
         case 'focusDown': {
-          if (tab.panes.length === 2) {
-            const direction = tab.paneLayoutDirection ?? 'horizontal';
-            if (direction === 'vertical') {
-              onSetActivePane(ws.id, tab.id, tab.panes[1].id);
-            }
-          }
+          const paneId = findDirectionalPaneId(tab, activePaneId, 'down');
+          if (paneId) onSetActivePane(ws.id, tab.id, paneId);
           break;
         }
       }

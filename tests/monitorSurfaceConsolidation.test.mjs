@@ -2,7 +2,7 @@
  * HARDEN-010 — Monitor Surface Consolidation Test Suite
  *
  * Verifies:
- * 1. Consolidated MonitorView model: ['capture-evidence', 'changes', 'verification', 'agents', 'governance']
+ * 1. Consolidated MonitorView model: ['capture-evidence', 'changes', 'verification']
  * 2. Default view is 'capture-evidence'; no separate 'capture' or 'evidence' views
  * 3. Vertical layout: Capture section on top, Evidence section directly below
  * 4. No nested Capture/Evidence tabs
@@ -81,15 +81,13 @@ console.log(
 
   assert.strictEqual(
     ORDERED_MONITOR_VIEWS.length,
-    5,
-    'Must contain exactly 5 views',
+    3,
+    'Must contain exactly 3 views',
   );
   assert.deepStrictEqual(ORDERED_MONITOR_VIEWS, [
     'capture-evidence',
     'changes',
     'verification',
-    'agents',
-    'governance',
   ]);
 
   assert.ok(
@@ -102,7 +100,7 @@ console.log(
   );
 
   console.log(
-    '✓ Consolidated views model and 5-position Monitor order verified',
+    '✓ Consolidated views model and 3-position Monitor order verified',
   );
 }
 
@@ -347,13 +345,6 @@ console.log(
     getSelectedCount(selection),
     1,
     'Selection survives navigating to verification',
-  );
-
-  activeView = 'governance';
-  assert.strictEqual(
-    getSelectedCount(selection),
-    1,
-    'Selection survives navigating to governance',
   );
 
   activeView = 'capture-evidence';

@@ -5,8 +5,8 @@
  * Markdown document for copying to clipboard.
  *
  * ARCHITECTURAL INVARIANTS:
- * 1. Single shared formatter for all Monitor surfaces (Capture, Changes, Verify, Agents, Governance).
- * 2. Deterministic ordering: grouped by domain, sorted by selection order and stable IDs.
+ * 1. Single shared formatter for all Monitor surfaces (Capture, Changes, Verify).
+ * 2. Deterministic ordering: grouped by domain, then by selection and canonical input order.
  * 3. Bounded output: respects MAX_ITEM_CHARS and MAX_TOTAL_COPY_CHARS with explicit truncation markers.
  * 4. Semantic truncation: preserves head and tail of output rather than arbitrary hard cutoff.
  * 5. Secret safety: never outputs cryptographic nonces, tokens, or credentials.
@@ -19,7 +19,6 @@ import type {
   ResolvedRepositoryChangeEvidence,
   ResolvedVerificationEvidence,
   ResolvedAgentEventEvidence,
-  ResolvedPolicyEvidence,
   ResolvedStructuredEvidence,
   ResolvedUsageEvidence,
   ResolvedAttributionEvidence,
@@ -443,73 +442,6 @@ export function formatAgentEventEvidence(
 }
 
 /**
- * Formats a single ResolvedPolicyEvidence item.
- */
-export function formatPolicyEvidence(item: ResolvedPolicyEvidence): string {
-  const lines: string[] = [];
-
-  let headerTitle: string;
-  if (item.subkind === 'decision') {
-    headerTitle = `Policy Decision — ${item.effect?.toUpperCase() ?? 'DECISION'}`;
-  } else if (item.subkind === 'approval') {
-    headerTitle = `Approval Record — ${item.status?.toUpperCase() ?? 'APPROVAL'}`;
-  } else {
-    headerTitle = `Policy Audit — ${item.governanceCoverage || 'AUDIT'}`;
-  }
-  lines.push(`## ${headerTitle}`);
-  lines.push('');
-
-  const target = item.command
-    ? `\`${item.command}\``
-    : item.filePath
-      ? `\`${item.filePath}\``
-      : item.toolName || 'action';
-  lines.push(`Action Request: ${target}`);
-
-  if (item.requesterType) {
-    lines.push(`Requester: ${item.requesterType}`);
-  }
-
-  if (item.governanceCoverage) {
-    lines.push(`Coverage: ${item.governanceCoverage}`);
-  }
-
-  if (item.effect) {
-    lines.push(`Effect: ${item.effect.toUpperCase()}`);
-  }
-
-  if (item.status) {
-    lines.push(`Status: ${item.status.toUpperCase()}`);
-  }
-
-  if (item.resolvedByActorId) {
-    lines.push(`Resolved By: ${item.resolvedByActorId}`);
-  }
-
-  if (item.comment) {
-    lines.push(`Comment: ${item.comment}`);
-  }
-
-  if (item.reason) {
-    lines.push(`Reason: ${item.reason}`);
-  }
-
-  if (item.warningCodes && item.warningCodes.length > 0) {
-    lines.push(`Warnings: ${item.warningCodes.join(', ')}`);
-  }
-
-  if (item.timestamp) {
-    lines.push(`Timestamp: ${new Date(item.timestamp).toISOString()}`);
-  }
-
-  if (item.requestFingerprint) {
-    lines.push(`Request Fingerprint: ${item.requestFingerprint.slice(0, 16)}...`);
-  }
-
-  return lines.join('\n').trim();
-}
-
-/**
  * Formats a single ResolvedStructuredEvidence item.
  */
 export function formatStructuredEvidence(item: ResolvedStructuredEvidence): string {
@@ -624,8 +556,6 @@ export function formatResolvedItem(
       return formatVerificationEvidence(item, maxItemChars);
     case 'agent-event':
       return formatAgentEventEvidence(item, maxItemChars);
-    case 'policy':
-      return formatPolicyEvidence(item);
     case 'structured-evidence':
       return formatStructuredEvidence(item);
     case 'usage':
@@ -649,31 +579,33 @@ const DOMAIN_ORDER_WEIGHTS: Record<ResolvedEvidenceItem['kind'], number> = {
   'structured-evidence': 4,
   'repository-attribution': 5,
   'agent-event': 6,
-  'policy': 7,
   'usage': 8,
   'unavailable': 9,
 };
 
 /**
  * Deterministically sorts resolved evidence items by domain priority,
- * then by selection timestamp (selectedAt) ascending, with item ID as tie-breaker.
+ * then by selection timestamp (selectedAt) ascending, preserving canonical input order for ties.
  */
 export function sortResolvedEvidenceItems(
   items: ResolvedEvidenceItem[],
 ): ResolvedEvidenceItem[] {
-  return [...items].sort((a, b) => {
-    const weightA = DOMAIN_ORDER_WEIGHTS[a.kind] ?? 99;
-    const weightB = DOMAIN_ORDER_WEIGHTS[b.kind] ?? 99;
-    if (weightA !== weightB) {
-      return weightA - weightB;
-    }
-    const timeA = a.selectedAt ?? 0;
-    const timeB = b.selectedAt ?? 0;
-    if (timeA !== timeB) {
-      return timeA - timeB;
-    }
-    return a.id.localeCompare(b.id);
-  });
+  return items
+    .map((item, inputIndex) => ({ item, inputIndex }))
+    .sort((a, b) => {
+      const weightA = DOMAIN_ORDER_WEIGHTS[a.item.kind] ?? 99;
+      const weightB = DOMAIN_ORDER_WEIGHTS[b.item.kind] ?? 99;
+      if (weightA !== weightB) {
+        return weightA - weightB;
+      }
+      const timeA = a.item.selectedAt ?? 0;
+      const timeB = b.item.selectedAt ?? 0;
+      if (timeA !== timeB) {
+        return timeA - timeB;
+      }
+      return a.inputIndex - b.inputIndex;
+    })
+    .map(({ item }) => item);
 }
 
 /**

@@ -1,4 +1,12 @@
-import { memo, useMemo, useState, useCallback, useRef, useEffect } from 'react';
+import {
+  memo,
+  useMemo,
+  useState,
+  useCallback,
+  useRef,
+  useEffect,
+  type CSSProperties,
+} from 'react';
 import {
   getCaptureStatus,
   deriveHasRetainedData,
@@ -6,7 +14,9 @@ import {
   type TranscriptFeedback,
   type CaptureStatus,
 } from './types';
-import type { PaneAccentId } from '../workspace/types';
+import { DerivedSurfaceErrorBoundary } from '../workspace/DerivedSurfaceErrorBoundary';
+import type { PaneAccentId, TerminalTabColorKey } from '../workspace/types';
+import { getTerminalTabColorCssValue } from '../workspace/terminalTabName';
 import {
   normalizeOutput,
   normalizeCommand,
@@ -68,6 +78,7 @@ import {
   MonitorGlobalFeedbackRegion,
   createMonitorFeedbackStore,
   type MonitorFeedback,
+  type MonitorFeedbackLevel,
   MonitorFooter,
 } from '../monitor';
 
@@ -290,7 +301,7 @@ export const TranscriptCard = memo(function TranscriptCard({
             aria-label={`Copy transcript block ${headerLabel}`}
           >
             <svg
-              width='12'
+              width="12"
               height='12'
               viewBox='0 0 24 24'
               fill='none'
@@ -312,7 +323,7 @@ export const TranscriptCard = memo(function TranscriptCard({
             aria-label={`Delete transcript block ${headerLabel}`}
           >
             <svg
-              width='12'
+              width="12"
               height='12'
               viewBox='0 0 24 24'
               fill='none'
@@ -322,7 +333,7 @@ export const TranscriptCard = memo(function TranscriptCard({
               strokeLinejoin='round'
               aria-hidden='true'
             >
-              <polyline points='3 6 5 6 21 6' />
+              <polyline points="3 6 5 6 21 6" />
               <path d='M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2' />
               <line x1='10' y1='11' x2='10' y2='17' />
               <line x1='14' y1='11' x2='14' y2='17' />
@@ -344,7 +355,7 @@ export const TranscriptCard = memo(function TranscriptCard({
             }
           >
             <svg
-              width='12'
+              width="12"
               height='12'
               viewBox='0 0 24 24'
               fill='none'
@@ -646,6 +657,8 @@ export interface CaptureTargetPaneInfo {
   id: string;
   stableOrdinal: number;
   accentId: PaneAccentId;
+  terminalTabColorKey?: TerminalTabColorKey;
+  label?: string;
 }
 
 export interface TranscriptCapturePanelProps {
@@ -657,6 +670,8 @@ export interface TranscriptCapturePanelProps {
   feedback: TranscriptFeedback | null;
   availablePanes?: CaptureTargetPaneInfo[];
   selectedCapturePaneIds?: string[];
+  captureTargetMode?: 'all' | 'explicit';
+  listeningPaneCount?: number;
   isTargetSelectorLocked?: boolean;
   captureStatusOverride?: CaptureStatus;
   onToggleListening: () => void;
@@ -701,41 +716,16 @@ export interface TranscriptCapturePanelProps {
   onCreateVerificationProfile?: (name: string) => void;
   onRenameVerificationProfile?: (contractId: string, name: string) => void;
   onDeleteVerificationProfile?: (contractId: string) => void;
-  onAddVerificationCriterion?: (
-    contractId: string,
-    criterion: {
-      label: string;
-      command: string;
-      workingDirectory?: string;
-      expectedExitCodes?: number[];
-    },
-  ) => void;
-  onUpdateVerificationCriterion?: (
-    contractId: string,
-    criterion: VerificationCriterion,
-  ) => void;
-  onDeleteVerificationCriterion?: (
-    contractId: string,
-    criterionId: string,
-  ) => void;
-  onReorderVerificationCriteria?: (
-    contractId: string,
-    orderedCriterionIds: string[],
-  ) => void;
+  onAddVerificationCriterion?: (contractId: string, criterion: { label: string; command: string; workingDirectory?: string; expectedExitCodes?: number[] }) => void;
+  onUpdateVerificationCriterion?: (contractId: string, criterion: VerificationCriterion) => void;
+  onDeleteVerificationCriterion?: (contractId: string, criterionId: string) => void;
+  onReorderVerificationCriteria?: (contractId: string, orderedCriterionIds: string[]) => void;
   onClearRunHistory?: () => void;
   repositorySnapshot?: RepositorySnapshot | null;
   latestCollectionRun?: EvidenceCollectionRun | null;
   isCollectingRepositoryEvidence?: boolean;
   onRefreshRepositoryEvidence?: () => void;
   changeAttributions?: ChangeAttribution[];
-  agentRuns?: unknown[];
-  activeAgentRun?: unknown | null;
-  onVerifyAgentRun?: (runId: string) => void;
-  onCancelAgentRun?: (runId: string) => void;
-  onStartAgentRun?: (taskText?: string, adapterId?: string) => void;
-  activeComparisonRunIds?: [string, string] | null;
-  onCompareAgentRuns?: (runIdA: string, runIdB: string) => void;
-  onCloseComparison?: () => void;
   activeView?: MonitorView;
   onViewChange?: (view: MonitorView) => void;
   isMonitorFocused?: boolean;
@@ -758,6 +748,8 @@ export const TranscriptCapturePanel = memo(function TranscriptCapturePanel(
     feedback,
     availablePanes,
     selectedCapturePaneIds,
+    captureTargetMode,
+    listeningPaneCount,
     isTargetSelectorLocked,
     captureStatusOverride,
     onToggleListening,
@@ -852,20 +844,53 @@ export const TranscriptCapturePanel = memo(function TranscriptCapturePanel(
 
   useEffect(() => {
     if (feedback && feedback.message) {
+      const level: MonitorFeedbackLevel =
+        feedback.type === 'error' ? 'error' : 'success';
+      const msg = feedback.message.toLowerCase();
+      const dedupeKey =
+        feedback.dedupeKey ??
+        (msg.includes('reset')
+          ? msg.includes('verification')
+            ? 'workspace:reset:blocked-verification'
+            : msg.includes('capture')
+              ? 'workspace:reset:blocked-capture'
+              : 'workspace:reset'
+          : msg.includes('block')
+            ? (msg.includes('selected') || msg.includes('blocks') ? 'copy:selected-blocks' : 'copy:block')
+            : msg.includes('removed') || msg.includes('delete')
+              ? 'evidence:delete'
+              : msg.includes('rerun')
+                ? 'execution:rerun'
+                : msg.includes('verification')
+                  ? 'verification:status'
+                  : undefined);
+
       feedbackStore.push({
-        level: feedback.type === 'error' ? 'error' : 'info',
+        level,
         source: 'capture',
         title: feedback.message,
+        dedupeKey,
+        durationMs: 3000,
       });
     }
   }, [feedback, feedbackStore]);
 
   const triggerCopyFeedback = useCallback(
-    (message: string) => {
+    (message: string, dedupeKey?: string) => {
+      const derivedKey =
+        dedupeKey ??
+        (message.toLowerCase().includes('selected')
+          ? 'copy:selected-blocks'
+          : message.toLowerCase().includes('block')
+            ? 'copy:block'
+            : `copy:${message.toLowerCase().replace(/\s+/g, '-')}`);
+
       feedbackStore.push({
         level: 'success',
         source: 'clipboard',
         title: message,
+        dedupeKey: derivedKey,
+        durationMs: 3000,
       });
     },
     [feedbackStore],
@@ -920,7 +945,10 @@ export const TranscriptCapturePanel = memo(function TranscriptCapturePanel(
         .length
     : 0;
   const isAllPanesSelected =
-    totalPanes > 0 && selectedPanesCount === totalPanes;
+    captureTargetMode === 'all' ||
+    (captureTargetMode === undefined &&
+      totalPanes > 0 &&
+      selectedPanesCount === totalPanes);
   const isPanesIndeterminate =
     totalPanes > 0 && selectedPanesCount > 0 && selectedPanesCount < totalPanes;
 
@@ -974,29 +1002,31 @@ export const TranscriptCapturePanel = memo(function TranscriptCapturePanel(
   const isDeleteConfirmActive =
     pendingConfirmation === 'delete-selected' && selectedCount > 0;
 
+  // Block copy feedback is owned by the onCopyBlock handler, which reports
+  // the actual clipboard result through the `feedback` prop.
   const handleCardCopy = useCallback(
     (block: TranscriptBlock) => {
       onCopyBlock(block);
-      triggerCopyFeedback('Copied 1 block');
     },
-    [onCopyBlock, triggerCopyFeedback],
+    [onCopyBlock],
   );
 
   const handleCopyText = useCallback(
     (text: string, label: string) => {
       copyToClipboard(text);
-      triggerCopyFeedback(label);
+      triggerCopyFeedback(
+        label,
+        `copy:${label.toLowerCase().replace(/\s+/g, '-')}`,
+      );
     },
     [triggerCopyFeedback],
   );
 
+  // Copy-selected feedback is owned by the onCopySelected handler, which
+  // reports the actual clipboard result through the `feedback` prop.
   const handleCopySelectedClick = useCallback(() => {
     onCopySelected();
-    const count = selectedCount || 1;
-    triggerCopyFeedback(
-      count === 1 ? 'Copied 1 block' : `Copied ${count} blocks`,
-    );
-  }, [onCopySelected, selectedCount, triggerCopyFeedback]);
+  }, [onCopySelected]);
 
   // Canonical Evidence Selection State
   const [evidenceSelection, setEvidenceSelection] =
@@ -1095,12 +1125,16 @@ export const TranscriptCapturePanel = memo(function TranscriptCapturePanel(
         level: 'info',
         source: 'repository',
         title: 'Refreshing repository evidence…',
+        dedupeKey: 'repository:refresh',
+        durationMs: 3000,
       });
       await onRefreshRepositoryEvidence();
       feedbackStore.push({
         level: 'success',
         source: 'repository',
         title: 'Repository evidence refreshed',
+        dedupeKey: 'repository:refresh',
+        durationMs: 3000,
       });
     } catch (err: unknown) {
       feedbackStore.push({
@@ -1108,6 +1142,8 @@ export const TranscriptCapturePanel = memo(function TranscriptCapturePanel(
         source: 'repository',
         title: 'Repository collection failed',
         message: err instanceof Error ? err.message : String(err),
+        dedupeKey: 'repository:refresh',
+        durationMs: 3000,
       });
     }
   }, [onRefreshRepositoryEvidence, feedbackStore]);
@@ -1129,9 +1165,6 @@ export const TranscriptCapturePanel = memo(function TranscriptCapturePanel(
           latestVerificationRun,
           historicalVerificationRuns,
           changeAttributions,
-          agentRuns: undefined,
-          activeAgentRun: undefined,
-          agentEventIngress: undefined,
         },
       );
 
@@ -1148,22 +1181,23 @@ export const TranscriptCapturePanel = memo(function TranscriptCapturePanel(
       if (unavailableCount > 0) {
         triggerCopyFeedback(
           `Copied ${totalCount - unavailableCount} ${totalCount - unavailableCount === 1 ? 'item' : 'items'}; ${unavailableCount} unavailable`,
+          'copy:selected-evidence',
         );
       } else {
         triggerCopyFeedback(
           `Copied ${totalCount} ${totalCount === 1 ? 'evidence item' : 'evidence items'}`,
+          'copy:selected-evidence',
         );
       }
     } catch (err: unknown) {
-      console.warn(
-        '[TranscriptCapturePanel] Failed to copy selected evidence:',
-        err,
-      );
+      console.warn('[TranscriptCapturePanel] Failed to copy selected evidence:', err);
       feedbackStore.push({
         level: 'error',
         source: 'clipboard',
         title: 'Could not copy selected evidence',
         message: err instanceof Error ? err.message : String(err),
+        dedupeKey: 'copy:selected-evidence',
+        durationMs: 3000,
       });
     }
   }, [
@@ -1212,12 +1246,26 @@ export const TranscriptCapturePanel = memo(function TranscriptCapturePanel(
   }, [verificationPresentation]);
 
   return (
-    <aside className='context-panel' aria-label='Transcript capture panel'>
-      {/* Shared Monitor Global Feedback Region */}
-      <MonitorGlobalFeedbackRegion
-        items={feedbackItems}
-        onDismiss={(id) => feedbackStore.dismiss(id)}
-      />
+    <div
+      className='capture-panel-container capture-panel-root'
+      data-testid='capture-panel-container'
+    >
+      {/* Floating Feedback Overlay: floats above entire Capture panel viewport */}
+      <div
+        className='capture-floating-feedback-region'
+        role='status'
+        aria-live='polite'
+        aria-atomic='false'
+        aria-label='Capture notifications'
+      >
+        <MonitorGlobalFeedbackRegion
+          items={feedbackItems}
+          onDismiss={(id) => feedbackStore.dismiss(id)}
+        />
+      </div>
+
+      <aside className='context-panel' aria-label='Transcript capture panel'>
+
       {/* 5-Position Stable Monitor Navigation Tab Strip (Positions 2–6) */}
       <div
         className='capture-view-segmented-control monitor-view-nav'
@@ -1278,12 +1326,13 @@ export const TranscriptCapturePanel = memo(function TranscriptCapturePanel(
         >
           <span className='monitor-tab-label'>Verify</span>
           {verifyTabIndicator.hasDot && (
-            <span className={verifyTabIndicator.dotClass} aria-hidden='true' />
+            <span
+              className={verifyTabIndicator.dotClass}
+              aria-hidden='true'
+            />
           )}
         </button>
-
-        {/* RELEASE-POLISH-VERIFY-023: Hide unused expand/enlarge control for public Terminal v0.1 */}
-        {capabilities.agents && onToggleMonitorFocus && (
+        {onToggleMonitorFocus && (
           <button
             type='button'
             className='monitor-focus-toggle-btn'
@@ -1300,14 +1349,20 @@ export const TranscriptCapturePanel = memo(function TranscriptCapturePanel(
           </button>
         )}
       </div>
+
       {/* Surface 2: Consolidated Capture View */}
       {activeMonitorView === 'capture-evidence' && (
+        <DerivedSurfaceErrorBoundary surfaceName="Capture">
         <div
           className='capture-evidence-view-surface'
           data-view='capture-evidence'
         >
           {/* SECTION 1: CAPTURE CONTROLS & SESSION INFO */}
-          <section className='capture-section' aria-label='Capture controls'>
+          <div
+            className='capture-management-header capture-sticky-header capture-control-stack'
+            data-testid='capture-management-header'
+          >
+            <section className='capture-section' aria-label='Capture controls'>
             <div className='capture-toolbar capture-panel-header'>
               {/* Row 1: Capture state indicator & action controls */}
               <div className='capture-toolbar-top-row'>
@@ -1404,10 +1459,7 @@ export const TranscriptCapturePanel = memo(function TranscriptCapturePanel(
                         aria-label='Stop capture'
                         title='Stop capture'
                       >
-                        <span
-                          className='capture-stop-icon'
-                          aria-hidden='true'
-                        />
+                        <span className='capture-stop-icon' aria-hidden='true' />
                         <span>Stop</span>
                       </button>
                     )}
@@ -1416,16 +1468,8 @@ export const TranscriptCapturePanel = memo(function TranscriptCapturePanel(
                     type='button'
                     className={`capture-action-btn capture-icon-btn capture-info-btn ${isCaptureDetailsExpanded ? 'capture-info-btn--active' : ''}`}
                     onClick={() => setIsCaptureDetailsExpanded((prev) => !prev)}
-                    aria-label={
-                      isCaptureDetailsExpanded
-                        ? 'Hide capture details'
-                        : 'Show capture details'
-                    }
-                    title={
-                      isCaptureDetailsExpanded
-                        ? 'Hide capture details'
-                        : 'Show capture details'
-                    }
+                    aria-label={isCaptureDetailsExpanded ? 'Hide capture details' : 'Show capture details'}
+                    title={isCaptureDetailsExpanded ? 'Hide capture details' : 'Show capture details'}
                     aria-expanded={isCaptureDetailsExpanded}
                   >
                     <svg
@@ -1474,17 +1518,26 @@ export const TranscriptCapturePanel = memo(function TranscriptCapturePanel(
                         isPanesIndeterminate ? 'mixed' : isAllPanesSelected
                       }
                     />
-                    <span className='capture-target-all-label'>All</span>
+                    <span className='capture-target-all-label'>
+                      All
+                    </span>
                   </label>
                   {availablePanes.map((pane) => {
                     const isSelected =
                       selectedCapturePaneIds?.includes(pane.id) ?? false;
+                    const terminalTabColorKey =
+                      pane.terminalTabColorKey ?? pane.accentId;
+                    const tabIdentityStyle = {
+                      '--terminal-tab-identity-color':
+                        getTerminalTabColorCssValue(terminalTabColorKey),
+                    } as CSSProperties;
 
                     return (
                       <label
                         key={pane.id}
                         className={`capture-target-pill ${isSelected ? 'capture-target-pill--selected' : ''}`}
-                        data-accent={pane.accentId}
+                        data-tab-color={terminalTabColorKey}
+                        style={tabIdentityStyle}
                       >
                         <input
                           type='checkbox'
@@ -1492,13 +1545,9 @@ export const TranscriptCapturePanel = memo(function TranscriptCapturePanel(
                           checked={isSelected}
                           disabled={isTargetSelectorLocked}
                           onChange={() => onToggleSelectCapturePane?.(pane.id)}
-                          aria-label={`Listen to terminal pane ${pane.stableOrdinal}`}
+                          aria-label={`Listen to ${pane.label ?? 'Terminal'}, pane ${pane.stableOrdinal}`}
                         />
-                        <span
-                          className='capture-target-dot'
-                          aria-hidden='true'
-                        />
-                        <span aria-hidden='true'>{pane.stableOrdinal}</span>
+                        <span aria-hidden='true'>{pane.label ?? 'Terminal'}</span>
                       </label>
                     );
                   })}
@@ -1508,29 +1557,19 @@ export const TranscriptCapturePanel = memo(function TranscriptCapturePanel(
 
             {/* Capture Session Details & Metrics */}
             {!isCaptureDetailsExpanded ? (
-              <div
-                className='capture-session-summary'
-                aria-label='Capture summary'
-              >
+              <div className='capture-session-summary' aria-label='Capture summary'>
                 {currentBatchId !== null && (
                   <>
-                    <span className='capture-summary-item'>
-                      Batch #{currentBatchId}
-                    </span>
-                    <span className='capture-summary-dot' aria-hidden='true'>
-                      ·
-                    </span>
+                    <span className='capture-summary-item'>Batch #{currentBatchId}</span>
+                    <span className='capture-summary-dot' aria-hidden='true'>·</span>
                   </>
                 )}
                 <span className='capture-summary-item'>
                   {selectedPanesCount}/{totalPanes} panes
                 </span>
-                <span className='capture-summary-dot' aria-hidden='true'>
-                  ·
-                </span>
+                <span className='capture-summary-dot' aria-hidden='true'>·</span>
                 <span className='capture-summary-item'>
-                  {blocks.length}{' '}
-                  {blocks.length === 1 ? 'execution' : 'executions'}
+                  {blocks.length} {blocks.length === 1 ? 'execution' : 'executions'}
                 </span>
               </div>
             ) : (
@@ -1550,7 +1589,7 @@ export const TranscriptCapturePanel = memo(function TranscriptCapturePanel(
                     Target Panes:
                   </span>
                   <span className='capture-session-metric-value'>
-                    {selectedPanesCount} of {totalPanes} listening
+                    {listeningPaneCount ?? selectedPanesCount} of {totalPanes} listening
                   </span>
                 </div>
                 <div className='capture-session-metric-row'>
@@ -1558,16 +1597,12 @@ export const TranscriptCapturePanel = memo(function TranscriptCapturePanel(
                     Retained Executions:
                   </span>
                   <span className='capture-session-metric-value'>
-                    {blocks.length}{' '}
-                    {blocks.length === 1 ? 'command' : 'commands'}
+                    {blocks.length} {blocks.length === 1 ? 'command' : 'commands'}
                   </span>
                 </div>
               </div>
             )}
           </section>
-
-          {/* SECTION 2: EVIDENCE (CAPTURED EXECUTIONS) */}
-          <section className='evidence-section' aria-label='Captured evidence'>
             <div className='evidence-header-actions capture-panel-header'>
               {/* Bulk selection & global actions */}
               <div className='capture-toolbar-actions-row'>
@@ -1579,7 +1614,7 @@ export const TranscriptCapturePanel = memo(function TranscriptCapturePanel(
                     checked={isAllSelected}
                     disabled={totalBlocks === 0}
                     onChange={handleSelectAllChange}
-                    aria-label='Select or deselect all transcript blocks'
+                    aria-label="Select or deselect all transcript blocks"
                   />
                   <span className='capture-selection-count'>
                     {selectedCount} selected
@@ -1592,12 +1627,12 @@ export const TranscriptCapturePanel = memo(function TranscriptCapturePanel(
                     className='capture-icon-btn icon-button'
                     onClick={handleCopySelectedClick}
                     disabled={selectedCount === 0}
-                    aria-label='Copy selected transcript blocks'
-                    title='Copy selected transcript blocks'
+                    aria-label="Copy selected transcript blocks"
+                    title="Copy selected transcript blocks"
                   >
                     <svg
-                      width='12'
-                      height='12'
+                      width="12"
+                      height="12"
                       viewBox='0 0 24 24'
                       fill='none'
                       stroke='currentColor'
@@ -1613,14 +1648,14 @@ export const TranscriptCapturePanel = memo(function TranscriptCapturePanel(
                   <button
                     type='button'
                     className='capture-icon-btn capture-icon-btn-danger capture-icon-btn--destructive icon-button'
-                    data-destructive-hover='true'
+                    data-destructive-hover="true"
                     onClick={() => setPendingConfirmation('delete-selected')}
                     disabled={selectedCount === 0}
-                    aria-label='Delete selected transcript blocks'
-                    title='Delete selected transcript blocks'
+                    aria-label="Delete selected transcript blocks"
+                    title="Delete selected transcript blocks"
                   >
                     <svg
-                      width='12'
+                      width="12"
                       height='12'
                       viewBox='0 0 24 24'
                       fill='none'
@@ -1630,7 +1665,7 @@ export const TranscriptCapturePanel = memo(function TranscriptCapturePanel(
                       strokeLinejoin='round'
                       aria-hidden='true'
                     >
-                      <polyline points='3 6 5 6 21 6' />
+                      <polyline points="3 6 5 6 21 6" />
                       <path d='M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2' />
                       <line x1='10' y1='11' x2='10' y2='17' />
                       <line x1='14' y1='11' x2='14' y2='17' />
@@ -1639,6 +1674,10 @@ export const TranscriptCapturePanel = memo(function TranscriptCapturePanel(
                 </div>
               </div>
             </div>
+          </div>
+
+        {/* SECTION 2: EVIDENCE (CAPTURED EXECUTIONS) */}
+        <section className='evidence-section' aria-label='Captured evidence'>
 
             {/* Inline Destructive Confirmation Banner (stays local to Evidence deletion; banners support type="success") */}
             {isDeleteConfirmActive && (
@@ -1649,16 +1688,11 @@ export const TranscriptCapturePanel = memo(function TranscriptCapturePanel(
                 <InlineDestructiveBanner
                   title={`Delete ${selectedCount} block${selectedCount === 1 ? '' : 's'}?`}
                   body='Only local captured blocks are removed. Terminal screen and history are unaffected.'
-                  confirmLabel='Delete'
+                  confirmLabel="Delete"
                   onCancel={() => setPendingConfirmation(null)}
                   onConfirm={() => {
                     setPendingConfirmation(null);
                     onDeleteSelected();
-                    feedbackStore.push({
-                      level: 'info',
-                      source: 'evidence',
-                      title: `Deleted ${selectedCount} execution ${selectedCount === 1 ? 'record' : 'records'}`,
-                    });
                   }}
                 />
               </div>
@@ -1709,11 +1743,16 @@ export const TranscriptCapturePanel = memo(function TranscriptCapturePanel(
                 </div>
               </div>
             )}
+
+
           </section>
         </div>
+        </DerivedSurfaceErrorBoundary>
       )}
+
       {/* Surface 3: Repository Changes View */}
       {activeMonitorView === 'changes' && (
+        <DerivedSurfaceErrorBoundary surfaceName="Changes">
         <div className='changes-view-surface' data-view='changes'>
           <RepositoryEvidenceView
             snapshot={repositorySnapshot}
@@ -1732,9 +1771,12 @@ export const TranscriptCapturePanel = memo(function TranscriptCapturePanel(
             onOpenFolder={onOpenFolder}
           />
         </div>
+        </DerivedSurfaceErrorBoundary>
       )}
+
       {/* Surface 4: Verification View */}
       {activeMonitorView === 'verification' && (
+        <DerivedSurfaceErrorBoundary surfaceName="Verify">
         <div className='verification-view-surface' data-view='verification'>
           {verificationContract ? (
             <VerificationPanel
@@ -1752,9 +1794,7 @@ export const TranscriptCapturePanel = memo(function TranscriptCapturePanel(
               onClearCriteriaSelection={onClearVerificationCriteriaSelection}
               onRunVerification={onRunVerification ?? (() => {})}
               onCancelVerification={onCancelVerification ?? (() => {})}
-              onStopVerification={
-                onStopVerification ?? onCancelVerification ?? (() => {})
-              }
+              onStopVerification={onStopVerification ?? onCancelVerification ?? (() => {})}
               onContinueUnfinished={onContinueUnfinished}
               changeAttributions={changeAttributions}
               onSelectProfile={onSelectVerificationProfile}
@@ -1785,7 +1825,9 @@ export const TranscriptCapturePanel = memo(function TranscriptCapturePanel(
             </div>
           )}
         </div>
+        </DerivedSurfaceErrorBoundary>
       )}
+
       {/* Fixed Monitor Footer: Shared cross-domain EvidenceSelection actions for all surfaces 2–6 */}
       <MonitorFooter
         selectionState={activeSelectionState}
@@ -1795,7 +1837,8 @@ export const TranscriptCapturePanel = memo(function TranscriptCapturePanel(
         onCopy={handleCopySelectedEvidence}
         onCreatePrompt={() => setIsPromptComposerOpen(true)}
       />
-      {/* Modals: Prompt Composer & Agent Comparison */}
+
+      {/* Prompt composer modal */}
       <PromptComposerModal
         isOpen={isPromptComposerOpen}
         selectedItems={allSelectedEvidenceItems}
@@ -1804,5 +1847,6 @@ export const TranscriptCapturePanel = memo(function TranscriptCapturePanel(
         onCopySuccess={triggerCopyFeedback}
       />
     </aside>
+  </div>
   );
 });

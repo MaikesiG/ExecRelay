@@ -67,7 +67,7 @@ function renderTerminalTab(tab, activeTabId) {
     overflow: 'hidden',
     hasTopAccentHighlight: isActive,
     accentGeometry: isActive ? getTabTopAccentGeometry() : null,
-    accentColorToken: 'var(--terminal-tab-accent)',
+    accentColorToken: 'var(--terminal-tab-identity-color, var(--terminal-tab-accent))',
     bodyBackground: isActive ? 'rgba(255, 255, 255, 0.08)' : 'rgba(255, 255, 255, 0.03)',
     children: [
       {
@@ -167,8 +167,8 @@ console.log('Running Full-Width Tab Top Accent Tests (LT-FULL-WIDTH-TAB-TOP-ACCE
   );
   assert.strictEqual(
     termTab.accentColorToken,
-    'var(--terminal-tab-accent)',
-    'Terminal tab uses --terminal-tab-accent token'
+    'var(--terminal-tab-identity-color, var(--terminal-tab-accent))',
+    'Terminal tab uses its stable identity color with the legacy accent as fallback'
   );
 
   console.log('✓ Accent geometry is 100% identical while color differentiation is strictly preserved');

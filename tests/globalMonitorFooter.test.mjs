@@ -3,7 +3,7 @@
  *
  * Verifies:
  * 1. MonitorFooter is rendered outside ActiveMonitorView and belongs to the Monitor shell
- * 2. Shared across surfaces 2–6 (Capture/Evidence, Changes, Verify, Agents, Governance)
+ * 2. Shared across stable surfaces 2–4 (Capture/Evidence, Changes, Verify)
  * 3. Consumes canonical EvidenceSelection store
  * 4. Multi-domain / mixed selections from all surfaces co-exist and display accurate combined summary
  * 5. Actions: Clear (clears canonical selection), Copy (deterministic format + floating feedback), Create Prompt (opens modal)
@@ -57,7 +57,6 @@ const {
   createRepositoryFileSelectionItem,
   createVerificationResultSelectionItem,
   createAgentEventSelectionItem,
-  createPolicyDecisionSelectionItem,
 } = selectionModelMod;
 
 console.log('Running Global Monitor Footer Test Suite (HARDEN-011)...\n');
@@ -109,10 +108,10 @@ console.log('Running Global Monitor Footer Test Suite (HARDEN-011)...\n');
 }
 
 // ---------------------------------------------------------------------------
-// Test Group 2: Mixed Selections Across Surfaces 2–6
+// Test Group 2: Mixed Selections Across Stable Evidence Domains
 // ---------------------------------------------------------------------------
 {
-  console.log('\n--- Test Group 2: Mixed Selections Across Surfaces 2–6 ---');
+  console.log('\n--- Test Group 2: Mixed Selections Across Stable Evidence Domains ---');
 
   let state = createEvidenceSelectionState();
 
@@ -144,7 +143,7 @@ console.log('Running Global Monitor Footer Test Suite (HARDEN-011)...\n');
   });
   state = toggleItemSelection(state, verifyItem);
 
-  // Surface 5: Agents agent event
+  // Agent event evidence remains a selectable evidence domain.
   const agentItem = createAgentEventSelectionItem({
     id: 'agent-evt-1',
     agentRunId: 'arun-1',
@@ -155,18 +154,8 @@ console.log('Running Global Monitor Footer Test Suite (HARDEN-011)...\n');
   });
   state = toggleItemSelection(state, agentItem);
 
-  // Surface 6: Governance policy decision
-  const policyItem = createPolicyDecisionSelectionItem({
-    decisionId: 'pdec-1',
-    actionRequestId: 'act-1',
-    effect: 'allow',
-    command: 'git push',
-    requesterType: 'human',
-  });
-  state = toggleItemSelection(state, policyItem);
-
   // Verify total count
-  assert.strictEqual(getSelectedCount(state), 5, 'Must contain 5 selected items from 5 distinct surfaces');
+  assert.strictEqual(getSelectedCount(state), 4, 'Must contain 4 selected items from stable evidence domains');
 
   // Verify mixed summary
   const summary = formatSelectionSummary(state);
@@ -174,7 +163,6 @@ console.log('Running Global Monitor Footer Test Suite (HARDEN-011)...\n');
   assert.ok(summary.includes('1 repository file'), 'Summary includes repository file');
   assert.ok(summary.includes('1 verification result'), 'Summary includes verification result');
   assert.ok(summary.includes('1 agent event'), 'Summary includes agent event');
-  assert.ok(summary.includes('1 policy decision'), 'Summary includes policy decision');
 
   console.log('✓ Multi-domain selection correctly coexists with accurate mixed summary');
 }
@@ -191,8 +179,8 @@ console.log('Running Global Monitor Footer Test Suite (HARDEN-011)...\n');
 
   assert.strictEqual(getSelectedCount(state), 2);
 
-  // Switching views: 2 -> 3 -> 4 -> 5 -> 6 -> 2
-  const views = ['capture-evidence', 'changes', 'verification', 'agents', 'governance', 'capture-evidence'];
+  // Switching stable views: 2 -> 3 -> 4 -> 2
+  const views = ['capture-evidence', 'changes', 'verification', 'capture-evidence'];
   for (const view of views) {
     assert.strictEqual(getSelectedCount(state), 2, `Selection survives navigating to ${view}`);
   }

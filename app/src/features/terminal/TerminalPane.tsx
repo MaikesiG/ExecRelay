@@ -38,6 +38,13 @@ export interface TerminalPaneHandle {
   clearBuffer: () => void;
 
   /**
+   * Clears the terminal emulator screen and scrollback display buffer,
+   * preserving the current live prompt/input line at line 0 (WORKSPACE-RESET-001R2).
+   * Does NOT close or restart PTY, does NOT modify shell process, cwd, or emulator modes.
+   */
+  resetTerminal?: () => void;
+
+  /**
    * Copies active terminal selection to system clipboard.
    * Returns false if no text is selected.
    */
@@ -163,6 +170,14 @@ export const TerminalPane = forwardRef<TerminalPaneHandle, TerminalPaneProps>(
             const terminal = runtime.terminal;
             terminal.clear();
             terminal.focus();
+          }
+        },
+        resetTerminal: () => {
+          const runtime = terminalRuntimeRegistry.get(paneId);
+          if (runtime) {
+            runtime.terminal.clear();
+            runtime.terminal.scrollToBottom();
+            runtime.terminal.focus();
           }
         },
         copySelection: async () => {

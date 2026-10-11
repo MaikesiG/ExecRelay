@@ -10,9 +10,6 @@
  * - repository-attribution
  * - agent-event
  * - usage-summary
- * - policy-decision
- * - approval-record
- * - policy-audit
  *
  * INVARIANTS:
  * - Pure UI state: selection never mutates canonical Evidence, Execution, or Verification records.
@@ -27,15 +24,12 @@ export type EvidenceKind =
   | 'verification-result'
   | 'repository-attribution'
   | 'agent-event'
-  | 'usage-summary'
-  | 'policy-decision'
-  | 'approval-record'
-  | 'policy-audit';
+  | 'usage-summary';
 
-export interface BaseEvidenceSelectionItem {
+export interface BaseEvidenceSelectionItem<TKind extends string = EvidenceKind> {
   /** Unique composite selection key, e.g. "repo-file:src/auth.ts" or "exec:block-123" */
   id: string;
-  kind: EvidenceKind;
+  kind: TKind;
   selectedAt: number;
 }
 
@@ -119,54 +113,6 @@ export interface UsageSummarySelectionItem extends BaseEvidenceSelectionItem {
   costStatus: string;
 }
 
-export interface PolicyDecisionSelectionItem extends BaseEvidenceSelectionItem {
-  kind: 'policy-decision';
-  decisionId: string;
-  actionRequestId: string;
-  effect: 'allow' | 'require-approval' | 'deny';
-  command?: string;
-  filePath?: string;
-  toolName?: string;
-  reason?: string;
-  requesterType: string;
-  agentRunId?: string;
-  governanceCoverage?: string;
-  shellType?: string;
-  warningCodes?: string[];
-}
-
-export interface ApprovalRecordSelectionItem extends BaseEvidenceSelectionItem {
-  kind: 'approval-record';
-  approvalId: string;
-  actionRequestId: string;
-  status: 'pending' | 'approved' | 'denied' | 'consumed' | 'cancelled' | 'expired';
-  command?: string;
-  filePath?: string;
-  toolName?: string;
-  reason?: string;
-  resolvedByActorId?: string;
-  comment?: string;
-  agentRunId?: string;
-  governanceCoverage?: string;
-  shellType?: string;
-  warningCodes?: string[];
-}
-
-export interface PolicyAuditSelectionItem extends BaseEvidenceSelectionItem {
-  kind: 'policy-audit';
-  auditEventId: string;
-  actionRequestId?: string;
-  governanceCoverage: string;
-  command?: string;
-  filePath?: string;
-  shellType?: string;
-  decision?: string;
-  approvalStatus?: string;
-  warningCodes?: string[];
-  reason?: string;
-  timestamp: number;
-}
-
 export type EvidenceSelectionItem =
   | RepositoryFileSelectionItem
   | ExecutionSelectionItem
@@ -174,10 +120,7 @@ export type EvidenceSelectionItem =
   | VerificationResultSelectionItem
   | RepositoryAttributionSelectionItem
   | AgentEventSelectionItem
-  | UsageSummarySelectionItem
-  | PolicyDecisionSelectionItem
-  | ApprovalRecordSelectionItem
-  | PolicyAuditSelectionItem;
+  | UsageSummarySelectionItem;
 
 export interface EvidenceSelectionState {
   items: Map<string, EvidenceSelectionItem>;

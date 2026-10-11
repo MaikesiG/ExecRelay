@@ -333,3 +333,33 @@
   background: #2ea043;
   color: #ffffff;
 }
+
+.shortcut-cancel-modal-btn {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #c9d1d9;
+}
+
+.shortcut-cancel-modal-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #f0f6fc;
+}
+
+.shortcut-save-btn {
+  background: #238636;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: #ffffff;
+  font-weight: 600;
+}
+
+.shortcut-save-btn:hover:not(:disabled) {
+  background: #2ea043;
+  color: #ffffff;
+}
+
+.shortcut-save-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  background: #238636;
+  border-color: rgba(255, 255, 255, 0.1);
+}

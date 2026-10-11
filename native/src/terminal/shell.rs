@@ -168,8 +168,11 @@ if [[ -z "$_TRACERELAY_HOOKS_INSTALLED" ]]; then
     fi
   }
   _tracerelay_preexec() {
+    local full_cmd="$1"
+    local b64_cmd
+    b64_cmd=$(print -rn -- "$full_cmd" | base64 | tr -d '\n\r')
     if [[ -n "$_tracerelay_session_nonce" ]]; then
-      printf '\033]133;C;aid=%s\007' "$_tracerelay_session_nonce"
+      printf '\033]133;C;aid=%s;cmd=%s\007' "$_tracerelay_session_nonce" "$b64_cmd"
     else
       printf '\033]133;C\007'
     fi
@@ -293,9 +296,9 @@ fi
   source "${TRACERELAY_ORIG_ZDOTDIR:-$HOME}/.zshenv"
 fi
 "#;
-    let _ = std::fs::write(dir.join(".zshrc"), zshrc);
-    let _ = std::fs::write(dir.join(".zprofile"), zprofile);
-    let _ = std::fs::write(dir.join(".zshenv"), zshenv);
+    std::fs::write(dir.join(".zshrc"), zshrc).ok()?;
+    std::fs::write(dir.join(".zprofile"), zprofile).ok()?;
+    std::fs::write(dir.join(".zshenv"), zshenv).ok()?;
     Some(dir)
 }
 
@@ -316,6 +319,7 @@ fi
 
 if [[ -z "$_TRACERELAY_BASH_HOOKS_INSTALLED" ]]; then
   _TRACERELAY_BASH_HOOKS_INSTALLED=1
+  _tracerelay_command_active=0
   _tracerelay_prompt_cmd() {
     local ret=$?
     if [[ -n "$_tracerelay_session_nonce" ]]; then
@@ -323,10 +327,21 @@ if [[ -z "$_TRACERELAY_BASH_HOOKS_INSTALLED" ]]; then
     else
       printf '\033]133;D;%d\007\033]133;A\007' "$ret"
     fi
+    _tracerelay_command_active=0
   }
   PROMPT_COMMAND="_tracerelay_prompt_cmd${PROMPT_COMMAND:+; $PROMPT_COMMAND}"
   if [[ -n "$_tracerelay_session_nonce" ]]; then
-    trap 'printf "\033]133;C;aid=%s\007" "$_tracerelay_session_nonce"' DEBUG
+    _tracerelay_preexec() {
+      if [[ "$_tracerelay_command_active" == "1" || "$BASH_COMMAND" == "_tracerelay_prompt_cmd" ]]; then
+        return
+      fi
+      _tracerelay_command_active=1
+      local full_cmd b64_cmd
+      full_cmd=$(fc -ln -1)
+      b64_cmd=$(printf '%s' "$full_cmd" | base64 | tr -d '\n\r')
+      printf '\033]133;C;aid=%s;cmd=%s\007' "$_tracerelay_session_nonce" "$b64_cmd"
+    }
+    trap '_tracerelay_preexec' DEBUG
   else
     trap 'printf "\033]133;C\007"' DEBUG
   fi
@@ -420,7 +435,7 @@ if [[ -z "$_TRACERELAY_BASH_HOOKS_INSTALLED" ]]; then
 fi
 "#;
     let script_path = dir.join("tracerelay_bash.sh");
-    let _ = std::fs::write(&script_path, script);
+    std::fs::write(&script_path, script).ok()?;
     Some(script_path)
 }
 
@@ -429,7 +444,7 @@ pub fn build_command(
     config: &ShellConfig,
     cwd: Option<&str>,
     integration_nonce: Option<&str>,
-) -> CommandBuilder {
+) -> (CommandBuilder, bool) {
     let mut cmd = CommandBuilder::new(&config.executable);
     for arg in &config.args {
         cmd.arg(arg);
@@ -447,25 +462,31 @@ pub fn build_command(
         cmd.env("TRACERELAY_SHELL_NONCE", nonce);
     }
 
-    match config.shell_kind {
+    let shell_integration_available = match config.shell_kind {
         ShellKind::Zsh => {
             if let Some(integration_dir) = setup_zsh_integration() {
                 let orig = env::var("ZDOTDIR").unwrap_or_default();
                 cmd.env("TRACERELAY_ORIG_ZDOTDIR", orig);
                 cmd.env("ZDOTDIR", integration_dir.to_string_lossy().to_string());
                 cmd.env("TRACERELAY_SHELL_INTEGRATION", "1");
+                true
+            } else {
+                false
             }
         }
         ShellKind::Bash => {
             if let Some(script_path) = setup_bash_integration() {
                 cmd.env("BASH_ENV", script_path.to_string_lossy().to_string());
                 cmd.env("TRACERELAY_SHELL_INTEGRATION", "1");
+                true
+            } else {
+                false
             }
         }
-        _ => {}
-    }
+        _ => false,
+    };
 
-    cmd
+    (cmd, shell_integration_available)
 }
 
 #[cfg(test)]
@@ -520,8 +541,21 @@ mod tests {
             shell_kind: ShellKind::Zsh,
             args: vec!["-l".to_string()],
         };
-        let cmd = build_command(&config, None, None);
+        let (cmd, shell_integration_available) = build_command(&config, None, None);
         // Ensure command has executable set
         assert_eq!(cmd.get_argv(), &["/bin/zsh", "-l"]);
+        assert!(shell_integration_available);
+    }
+
+    #[test]
+    fn test_unsupported_shell_reports_no_integration() {
+        let config = ShellConfig {
+            executable: "/bin/sh".to_string(),
+            shell_kind: ShellKind::Sh,
+            args: vec!["-l".to_string()],
+        };
+        let (_, shell_integration_available) =
+            build_command(&config, None, Some("nonce"));
+        assert!(!shell_integration_available);
     }
 }

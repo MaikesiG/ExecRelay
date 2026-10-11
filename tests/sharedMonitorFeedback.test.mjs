@@ -3,7 +3,7 @@
  *
  * Verifies:
  * 1. Action feedback belongs to Monitor; view state belongs to View
- * 2. Feedback is globally visible across all Monitor views (Capture/Evidence, Changes, Verify, Agents, Gov)
+ * 2. Feedback is globally visible across all v0.1.2 Monitor views
  * 3. Max visible limit of 3 entries (FIFO eviction of older entries)
  * 4. Auto-dismiss timer semantics (success/info=4s, warning=8s, error=sticky/manual)
  * 5. Deduplication prevents rapid spam stacking
@@ -72,8 +72,7 @@ console.log('Running Shared Monitor Feedback Architecture Test Suite (HARDEN-010
   assert.strictEqual(store.getItems()[0].id, id1);
 
   // 2. Simulate switching views in Monitor:
-  // Active view changes from 'changes' -> 'verification' -> 'agents' -> 'capture-evidence'
-  const views = ['changes', 'verification', 'agents', 'governance', 'capture-evidence'];
+  const views = ['changes', 'verification', 'capture-evidence'];
   for (const view of views) {
     // The items in the MonitorFeedbackStore remain identical across view changes
     const items = store.getItems();
@@ -98,8 +97,6 @@ console.log('Running Shared Monitor Feedback Architecture Test Suite (HARDEN-010
     'evidence',
     'repository',
     'verification',
-    'agents',
-    'governance',
     'clipboard',
     'system',
   ];
@@ -116,7 +113,7 @@ console.log('Running Shared Monitor Feedback Architecture Test Suite (HARDEN-010
   }
 
   store.destroy();
-  console.log('✓ All 8 standard operational feedback sources supported');
+  console.log('✓ All 6 stable operational feedback sources supported');
 }
 
 // ---------------------------------------------------------------------------
@@ -245,8 +242,8 @@ console.log('Running Shared Monitor Feedback Architecture Test Suite (HARDEN-010
     'Empty captured executions state must remain inside Evidence view',
   );
   assert.ok(
-    panelTsx.includes('No active agent runs'),
-    'Empty agent runs state must remain inside Agents view',
+    !panelTsx.includes('No active agent runs'),
+    'The v0.1.2 Monitor must not register the future Agents view',
   );
   assert.ok(
     panelTsx.includes('InlineDestructiveBanner'),

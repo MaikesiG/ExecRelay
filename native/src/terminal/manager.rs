@@ -72,7 +72,39 @@ impl TerminalSessionManager {
         let nonce = input
             .integration_nonce
             .or_else(|| Some(Uuid::new_v4().to_string()));
-        let cmd = build_command(&shell_config, input.cwd.as_deref(), nonce.as_deref());
+        let (cmd, shell_integration_available) =
+            build_command(&shell_config, input.cwd.as_deref(), nonce.as_deref());
+
+        #[cfg(debug_assertions)]
+        {
+            let integration_path = match shell_config.shell_kind {
+                crate::terminal::types::ShellKind::Zsh => Some(
+                    std::env::temp_dir()
+                        .join("tracerelay")
+                        .join("shell")
+                        .join("zsh")
+                        .join(".zshrc"),
+                ),
+                crate::terminal::types::ShellKind::Bash => Some(
+                    std::env::temp_dir()
+                        .join("tracerelay")
+                        .join("shell")
+                        .join("bash")
+                        .join("tracerelay_bash.sh"),
+                ),
+                _ => None,
+            };
+            eprintln!(
+                "[ExecRelay shell] session=<redacted> shell={} argv={:?} integrationInstalled={} integrationFile={}",
+                shell_config.executable,
+                shell_config.args,
+                shell_integration_available,
+                integration_path
+                    .as_ref()
+                    .map(|path| path.display().to_string())
+                    .unwrap_or_else(|| "<none>".to_string()),
+            );
+        }
 
         let pty_system = native_pty_system();
         let pair = pty_system
@@ -103,6 +135,7 @@ impl TerminalSessionManager {
             rows,
             cwd: input.cwd,
             integration_nonce: nonce,
+            shell_integration_available,
             master: pair.master,
             writer,
             child,
@@ -373,5 +406,95 @@ mod tests {
             manager.session_info(&session.session_id),
             Err(TerminalError::SessionNotFound(_))
         ));
+    }
+
+    #[test]
+    #[cfg(target_os = "macos")]
+    fn test_real_zsh_integration_emits_complete_logical_commands() {
+        use std::io::Read;
+        use std::sync::mpsc;
+        use std::time::Duration;
+
+        const NONCE: &str = "capture-command-r2-native-test";
+        const PRINTF_COMMAND: &str = "printf '%s\\n' \\\n  \"one\" \\\n  \"two\" \\\n  \"three\"";
+        const PRINTF_COMMAND_B64: &str =
+            "cHJpbnRmICclc1xuJyBcCiAgIm9uZSIgXAogICJ0d28iIFwKICAidGhyZWUi";
+        const PIPELINE_COMMAND: &str = "printf 'c\\na\\nb\\n' |\nsort |\nhead -n 2";
+        const PIPELINE_COMMAND_B64: &str =
+            "cHJpbnRmICdjXG5hXG5iXG4nIHwKc29ydCB8CmhlYWQgLW4gMg==";
+
+        let manager = TerminalSessionManager::new();
+        let session = manager
+            .create_session(CreateTerminalSessionInput {
+                shell_kind: Some(ShellKind::Zsh),
+                cols: Some(100),
+                rows: Some(30),
+                cwd: None,
+                integration_nonce: Some(NONCE.to_string()),
+            })
+            .expect("failed to spawn the real zsh PTY integration path");
+
+        assert_eq!(session.shell, "/bin/zsh");
+        assert_eq!(session.shell_kind, ShellKind::Zsh);
+        assert!(session.shell_integration_available);
+
+        let mut reader = manager
+            .get_session_reader(&session.session_id)
+            .expect("failed to clone the real zsh PTY reader");
+        let (output_tx, output_rx) = mpsc::channel();
+        let reader_thread = std::thread::spawn(move || {
+            let mut output = Vec::new();
+            let mut chunk = [0u8; 4096];
+            loop {
+                match reader.read(&mut chunk) {
+                    Ok(0) => break,
+                    Ok(n) => {
+                        output.extend_from_slice(&chunk[..n]);
+                        let text = String::from_utf8_lossy(&output);
+                        if text.matches("\u{1b}]133;C;").count() >= 2
+                            && text.matches("\u{1b}]133;D;").count() >= 3
+                        {
+                            break;
+                        }
+                    }
+                    Err(_) => break,
+                }
+            }
+            let _ = output_tx.send(output);
+        });
+
+        let input = format!(
+            "{}\r{}\r",
+            PRINTF_COMMAND.replace('\n', "\r"),
+            PIPELINE_COMMAND.replace('\n', "\r"),
+        );
+        manager
+            .write_bytes(&session.session_id, input.as_bytes())
+            .expect("failed to write logical commands to the real zsh PTY");
+
+        let output = output_rx
+            .recv_timeout(Duration::from_secs(10))
+            .expect("timed out waiting for real zsh integration markers");
+        let output = String::from_utf8_lossy(&output);
+
+        assert_eq!(output.matches("\u{1b}]133;C;").count(), 2);
+        assert!(output.contains(&format!(
+            "\u{1b}]133;C;aid={NONCE};cmd={PRINTF_COMMAND_B64}\u{7}"
+        )));
+        assert!(output.contains(&format!(
+            "\u{1b}]133;C;aid={NONCE};cmd={PIPELINE_COMMAND_B64}\u{7}"
+        )));
+        assert!(output.matches(&format!("\u{1b}]133;D;0;aid={NONCE}\u{7}")).count() >= 2);
+        assert!(output.contains("one\r\ntwo\r\nthree"));
+        assert!(output.contains("a\r\nb"));
+
+        manager
+            .close(CloseTerminalSessionInput {
+                session_id: session.session_id,
+            })
+            .expect("failed to close real zsh integration test session");
+        reader_thread
+            .join()
+            .expect("real zsh integration reader thread panicked");
     }
 }

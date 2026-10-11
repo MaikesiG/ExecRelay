@@ -14,6 +14,7 @@ import type {
   LogicalWorkspaceId,
   PaneLayoutDirection,
   PaneAccentId,
+  TerminalTabColorKey,
   TerminalPanel,
   CapturePanel,
   SplitNode,
@@ -25,6 +26,14 @@ import {
   removePanelNodeAndCollapse,
   updateSplitRatio,
 } from './panelLayoutTree';
+import {
+  migrateLegacyTerminalTabBaseName,
+  normalizeTerminalTabBaseName,
+} from './terminalTabName';
+import {
+  getCaptureTargetScope,
+  normalizeCaptureTargetScope,
+} from '../transcript/captureTargetScope';
 
 export function createDefaultTerminalPane(
   terminalTabId: TerminalTabId = 'tab-1',
@@ -62,10 +71,12 @@ export function createDefaultTerminalPane(
 export function createDefaultTerminalTab(
   id: TerminalTabId = 'tab-1',
   workspaceId: LogicalWorkspaceId = 'workspace-1',
-  label: string = 'Terminal 1',
+  label: string = 'Terminal',
   initialPaneId: TerminalPaneId = 'pane-1',
   initialPane?: TerminalPane,
+  colorKey: TerminalTabColorKey = 'emerald',
 ): TerminalTab {
+  const baseName = migrateLegacyTerminalTabBaseName(label);
   const pane =
     initialPane ?? createDefaultTerminalPane(id, initialPaneId, 1, 'blue');
 
@@ -100,8 +111,10 @@ export function createDefaultTerminalTab(
   return {
     id,
     workspaceId,
-    label,
-    name: label,
+    baseName,
+    colorKey,
+    label: baseName,
+    name: baseName,
     terminalPanes: [pane],
     panes: [pane],
     panels: [terminalPanel, capturePanel],
@@ -140,7 +153,7 @@ export function createDefaultLogicalWorkspace(
   const defaultTab = createDefaultTerminalTab(
     initialTerminalTabId,
     id,
-    'Terminal 1',
+    'Terminal',
     initialPaneId,
     defaultPane,
   );
@@ -175,9 +188,8 @@ export function renameTerminalTabInWorkspaces(
   terminalTabId: string,
   name: string,
 ): LogicalWorkspace[] {
-  const trimmed = name.trim();
-  if (!trimmed) return workspaces;
-  const finalName = trimmed.slice(0, 40);
+  if (!name.trim()) return workspaces;
+  const finalName = normalizeTerminalTabBaseName(name);
 
   return workspaces.map((ws) => {
     if (ws.id !== workspaceId) return ws;
@@ -187,7 +199,12 @@ export function renameTerminalTabInWorkspaces(
       ...ws,
       terminalTabs: ws.terminalTabs.map((t) =>
         t.id === terminalTabId
-          ? { ...t, label: finalName, name: finalName }
+          ? {
+              ...t,
+              baseName: finalName,
+              label: finalName,
+              name: finalName,
+            }
           : t,
       ),
     };
@@ -298,7 +315,20 @@ export function splitPaneInWorkspaces(
       newSplit,
     );
     const updatedPanes = [...tab.panes, newPane];
-    const updatedPanels = [...tab.panels, newPanel];
+    const updatedPanels = [
+      ...tab.panels.map((panel) =>
+        panel.kind === 'capture' && getCaptureTargetScope(ws).mode === 'all'
+          ? {
+              ...panel,
+              selectedCapturePaneIds: [
+                ...panel.selectedCapturePaneIds,
+                newPane.id,
+              ],
+            }
+          : panel,
+      ),
+      newPanel,
+    ];
     const nextOrdinal = getNextUnusedStableOrdinal(updatedPanes);
 
     const updatedTabs = ws.terminalTabs.map((t) => {
@@ -401,10 +431,26 @@ export function closePaneInWorkspaces(
       };
     });
 
+    const survivingWorkspacePanes = ws.panes.filter((p) => p.id !== paneId);
     return {
       ...ws,
       terminalTabs: updatedTabs,
-      panes: ws.panes.filter((p) => p.id !== paneId),
+      panes: survivingWorkspacePanes,
+      capture: {
+        ...ws.capture,
+        targetScope:
+          ws.capture.targetScope?.mode === 'explicit'
+            ? normalizeCaptureTargetScope(
+                {
+                  mode: 'explicit' as const,
+                  paneIds: ws.capture.targetScope.paneIds.filter(
+                    (id) => id !== paneId,
+                  ),
+                },
+                survivingWorkspacePanes.map((p) => p.id),
+              )
+            : ws.capture.targetScope,
+      },
     };
   });
 

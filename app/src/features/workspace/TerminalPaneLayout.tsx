@@ -154,27 +154,6 @@ export function TerminalPaneLayout({
     [migratedTab.panes],
   );
 
-  const paneBlocks = useMemo(
-    () =>
-      transcriptProps.blocks
-        .filter((b) => {
-          if (b.terminalTabId && b.terminalTabId !== tab.id) {
-            return false;
-          }
-          if (b.workspaceId && b.workspaceId !== workspaceId) {
-            return false;
-          }
-          return true;
-        })
-        .sort((a, b) => {
-          if (a.startedAt !== b.startedAt) {
-            return a.startedAt - b.startedAt;
-          }
-          return a.id.localeCompare(b.id);
-        }),
-    [transcriptProps.blocks, tab.id, workspaceId],
-  );
-
   const workspaceBodyRef = useRef<HTMLDivElement | null>(null);
   const [isDraggingResizer, setIsDraggingResizer] = useState(false);
   const isDraggingResizerRef = useRef(false);
@@ -319,13 +298,19 @@ export function TerminalPaneLayout({
           >
             <TranscriptCapturePanel
               isListening={transcriptProps.isListening}
-              blocks={paneBlocks}
+              blocks={transcriptProps.blocks}
               currentBatchId={transcriptProps.currentBatchId}
               currentBatchBlockCount={transcriptProps.currentBatchBlockCount}
               selectedBlockIds={transcriptProps.selectedBlockIds}
               feedback={transcriptProps.feedback}
-              availablePanes={availablePanes}
-              selectedCapturePaneIds={capturePanel?.selectedCapturePaneIds ?? []}
+              availablePanes={transcriptProps.availableCapturePanes ?? availablePanes}
+              selectedCapturePaneIds={
+                transcriptProps.selectedCapturePaneIds ??
+                capturePanel?.selectedCapturePaneIds ??
+                []
+              }
+              captureTargetMode={transcriptProps.captureTargetMode}
+              listeningPaneCount={transcriptProps.listeningCapturePaneCount}
               isTargetSelectorLocked={transcriptProps.isTargetSelectorLocked}
               captureStatusOverride={transcriptProps.captureStatus}
               onToggleListening={transcriptProps.onToggleListening}
@@ -378,11 +363,6 @@ export function TerminalPaneLayout({
               isCollectingRepositoryEvidence={transcriptProps.isCollectingRepositoryEvidence}
               onRefreshRepositoryEvidence={transcriptProps.onRefreshRepositoryEvidence}
               changeAttributions={transcriptProps.changeAttributions}
-              agentRuns={transcriptProps.agentRuns}
-              activeAgentRun={transcriptProps.activeAgentRun}
-              onVerifyAgentRun={transcriptProps.onVerifyAgentRun}
-              onCancelAgentRun={transcriptProps.onCancelAgentRun}
-              onStartAgentRun={transcriptProps.onStartAgentRun}
               activeView={transcriptProps.activeMonitorView}
               onViewChange={transcriptProps.onSelectMonitorView}
               isMonitorFocused={transcriptProps.isMonitorFocused}
