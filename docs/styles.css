@@ -122,6 +122,30 @@ body {
   color: var(--accent);
 }
 
+/* Language switcher */
+.lang-switch {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: var(--text-muted);
+}
+
+/* Simplified Chinese: system CJK fonts first, no negative tracking */
+html:lang(zh-CN) body {
+  font-family: -apple-system, BlinkMacSystemFont, "PingFang SC",
+    "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans CJK SC", "Segoe UI",
+    Roboto, Helvetica, Arial, sans-serif;
+}
+
+html:lang(zh-CN) .hero-tagline,
+html:lang(zh-CN) .section-title {
+  letter-spacing: 0;
+}
+
+html:lang(zh-CN) .spec-label {
+  white-space: nowrap;
+}
+
 /* Container */
 .content-container {
   max-width: var(--max-width);
@@ -135,6 +159,16 @@ body {
 .hero {
   text-align: center;
   padding: 2.5rem 0 3.5rem;
+}
+
+/* Official app icon; corner radius matches .brand-icon (6px / 28px) */
+.app-icon {
+  display: block;
+  width: 80px;
+  height: 80px;
+  margin: 0 auto 1.25rem;
+  border-radius: 22%;
+  object-fit: contain;
 }
 
 .hero-badge {
@@ -376,6 +410,7 @@ body {
 .spec-list li {
   display: flex;
   justify-content: space-between;
+  gap: 1rem;
   padding: 0.4rem 0;
   border-bottom: 1px solid var(--border-color);
   font-size: 0.9rem;
@@ -466,6 +501,10 @@ button:focus-visible {
 @media (max-width: 768px) {
   .hero-title {
     font-size: 2.15rem;
+  }
+  .app-icon {
+    width: 64px;
+    height: 64px;
   }
   .feature-grid {
     grid-template-columns: 1fr;

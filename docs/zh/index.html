@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+    <title>
+      ExecRelay — 运行任何命令。追踪每次执行。验证实际发生了什么。
+    </title>
+
+    <meta
+      name="description"
+      content="ExecRelay 是一个本地优先的工程执行终端，将真实 PTY 终端、结构化执行记录、Git 仓库变更观察和显式验证整合在一起。"
+    />
+
+    <link rel="alternate" hreflang="en" href="https://maikesig.github.io/ExecRelay/" />
+    <link rel="alternate" hreflang="zh-CN" href="https://maikesig.github.io/ExecRelay/zh/" />
+    <link rel="alternate" hreflang="x-default" href="https://maikesig.github.io/ExecRelay/" />
+
+    <link rel="icon" type="image/png" href="../assets/favicon.png" />
+    <link rel="apple-touch-icon" href="../assets/icon.png" />
+    <link rel="stylesheet" href="../styles.css" />
+  </head>
+
+  <body>
+    <header class="site-header">
+      <div class="nav-container">
+        <a href="index.html" class="brand">
+          <img
+            src="../assets/icon.png"
+            alt="ExecRelay Terminal 图标"
+            class="brand-icon"
+          />
+          <span>ExecRelay</span>
+        </a>
+
+        <nav aria-label="主导航">
+          <ul class="nav-links">
+            <li>
+              <a href="index.html" class="active" aria-current="page">
+                概览
+              </a>
+            </li>
+
+            <li>
+              <a href="download.html"> 下载 </a>
+            </li>
+
+            <li>
+              <a
+                href="https://github.com/MaikesiG/ExecRelay"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                GitHub
+              </a>
+            </li>
+
+            <li class="lang-switch">
+              <a href="../" lang="en" hreflang="en">EN</a>
+              <span aria-hidden="true">|</span>
+              <a href="./" lang="zh-CN" hreflang="zh-CN" class="active" aria-current="true">中文</a>
+            </li>
+          </ul>
+        </nav>
+      </div>
+    </header>
+
+    <main class="content-container">
+      <!-- Hero -->
+      <section class="hero">
+        <img class="app-icon" src="../assets/icon.png" alt="ExecRelay 应用图标" />
+
+        <div class="hero-badge">ExecRelay Terminal v0.1.2</div>
+
+        <h1 class="hero-title">ExecRelay Terminal</h1>
+
+        <p class="hero-tagline">
+          运行任何命令。追踪每次执行。验证实际发生了什么。
+        </p>
+
+        <p class="hero-description">
+          ExecRelay 是一个本地优先的工程执行终端，不只是运行命令。它将真实 PTY
+          终端、结构化执行记录、Git 仓库变更观察和显式验证整合在一起，帮助你更清楚地知道实际执行了什么、哪些文件发生了变化，以及任务是否真正成功。
+        </p>
+
+        <div class="cta-group">
+          <a href="download.html" class="btn btn-primary">
+            下载 macOS 版本
+          </a>
+
+          <a
+            href="https://github.com/MaikesiG/ExecRelay"
+            class="btn btn-secondary"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            在 GitHub 上查看
+          </a>
+        </div>
+      </section>
+
+      <!-- Core Surfaces -->
+      <section class="section">
+        <h2 class="section-title">核心功能</h2>
+
+        <p class="section-intro">
+          四个相互配合的功能区，让工程执行过程透明、可验证。
+        </p>
+
+        <div class="feature-grid">
+          <article class="feature-card">
+            <h3 class="feature-name">Terminal</h3>
+
+            <p class="feature-desc">
+              在真实 PTY 环境中运行命令，支持日常命令行工作流、分屏和交互式工具。
+            </p>
+          </article>
+
+          <article class="feature-card">
+            <h3 class="feature-name">Capture</h3>
+
+            <p class="feature-desc">
+              记录结构化执行证据和实际结果，保留真实的进程结果，而不是根据终端文本推断成功与否。
+            </p>
+          </article>
+
+          <article class="feature-card">
+            <h3 class="feature-name">Changes</h3>
+
+            <p class="feature-desc">
+              查看执行过程中观察到的 Git 仓库变更，将文件修改与对应的命令执行关联起来。
+            </p>
+          </article>
+
+          <article class="feature-card">
+            <h3 class="feature-name">Verify</h3>
+
+            <p class="feature-desc">
+              运行明确的验证检查并保留结果，支持确定性的判定条件和 monorepo 工作目录。
+            </p>
+          </article>
+        </div>
+      </section>
+
+      <!-- Trust & Verification -->
+      <section class="section">
+        <h2 class="section-title">可信与验证</h2>
+
+        <div class="text-callout">
+          <strong>以进程结果为准：</strong>
+          ExecRelay 依据原生进程结果和显式验证结果判断工程任务是否成功，而不是从终端文本中推断。退出码和进程监控构成判断依据。
+        </div>
+      </section>
+
+      <!-- Local-First Architecture -->
+      <section class="section">
+        <h2 class="section-title">本地优先架构</h2>
+
+        <div class="text-callout">
+          <strong>隐私优先设计：</strong>
+          ExecRelay v0.1.2 无需注册 ExecRelay 账号。核心执行完全在你的本地电脑上进行；除非你在终端中主动使用外部网络工具，本地工作区数据始终保留在本机应用中。正常的终端操作不依赖遥测功能——即使遥测失败，终端也能继续工作。
+        </div>
+      </section>
+    </main>
+
+    <!-- Footer -->
+    <footer class="site-footer">
+      <div class="footer-container">
+        <div class="footer-brand">
+          <strong>ExecRelay</strong>
+          &mdash; 本地优先的执行环境。
+        </div>
+
+        <ul class="footer-links">
+          <li>
+            <a
+              href="https://github.com/MaikesiG/ExecRelay"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              GitHub
+            </a>
+          </li>
+
+          <li>
+            <a
+              href="https://github.com/MaikesiG/ExecRelay/releases"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              发布版本
+            </a>
+          </li>
+
+          <li>
+            <a
+              href="https://github.com/MaikesiG/ExecRelay/issues"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              问题反馈
+            </a>
+          </li>
+        </ul>
+      </div>
+    </footer>
+  </body>
+</html>
