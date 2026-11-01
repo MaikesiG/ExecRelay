@@ -277,7 +277,8 @@
 
     @media (min-width: 860px) {
       .meta-grid {
-        grid-template-columns: repeat(4, 1fr);
+        grid-template-columns: repeat(5, 1fr);
+        gap: 1.25rem;
       }
     }
 
@@ -291,7 +292,7 @@
     }
 
     .meta-item dd {
-      font-size: 0.875rem;
+      font-size: 0.8125rem;
       color: var(--foreground);
       line-height: 1.45;
     }
@@ -726,8 +727,12 @@
           <dd>macOS arm64 &middot; Developer ID &middot; Notarized &middot; Runtime validated</dd>
         </div>
         <div class="meta-item">
-          <dt>Release Commit</dt>
-          <dd><code>e71e5b1</code> &middot; Reproducible CI lane builds</dd>
+          <dt>Public Release Commit</dt>
+          <dd><code>531fb9d</code> &middot; GitHub public projection</dd>
+        </div>
+        <div class="meta-item">
+          <dt>Binary Provenance</dt>
+          <dd><code>e71e5b1</code> &middot; Frozen private source</dd>
         </div>
         <div class="meta-item">
           <dt>Architecture</dt>
@@ -742,7 +747,7 @@
         <div class="kicker">PACKAGES</div>
         <h2 id="downloads-heading" class="section-title">Downloads</h2>
         <p class="section-desc">
-          Official release binaries built from the release commit. macOS is Developer ID signed and notarized; Windows and Linux packages are accompanied by authoritative SHA-256 checksums.
+          Official release binaries built from the binary provenance commit. macOS is Developer ID signed and notarized; Windows and Linux packages are accompanied by authoritative SHA-256 checksums.
         </p>
       </div>
 

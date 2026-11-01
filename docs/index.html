@@ -1,223 +1,560 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ExecRelay &mdash; Run anything. Trace everything. Verify what actually happened.</title>
+  <meta name="description" content="ExecRelay is a local-first engineering terminal for capturing execution evidence, observing repository changes, and explicitly verifying engineering work.">
+  <link rel="icon" type="image/png" href="assets/icon.png">
+  <style>
+    /*
+     * ExecRelay Overview Page — Editorial Engineering Design
+     * Aligned with guoxingchi.com design specification:
+     * - Dark monochrome palette (#0a0a0b / #ededef / #a0a0a8)
+     * - Subtle hairlines (#26262b / #3a3a41)
+     * - Left-aligned, generous whitespace
+     * - Monospace metadata kickers and technical tags
+     * - Compact, restrained buttons with 1px active press
+     */
 
-    <title>
-      ExecRelay — Run anything. Trace everything. Verify what actually happened.
-    </title>
+    :root {
+      --background: #0a0a0b;
+      --foreground: #ededef;
+      --muted: #a0a0a8;
+      --subtle: #131316;
+      --subtle-hover: #1c1c21;
+      --border: #26262b;
+      --border-strong: #3a3a41;
+      --accent: #8ab4ff;
+      --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      --container-max-width: 56rem;
+    }
 
-    <meta
-      name="description"
-      content="ExecRelay is a local-first engineering execution environment that combines a real terminal with structured execution capture, repository change tracking, and explicit verification."
-    />
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
 
-    <link rel="alternate" hreflang="en" href="https://maikesig.github.io/ExecRelay/" />
-    <link rel="alternate" hreflang="zh-CN" href="https://maikesig.github.io/ExecRelay/zh/" />
-    <link rel="alternate" hreflang="x-default" href="https://maikesig.github.io/ExecRelay/" />
+    html {
+      -webkit-text-size-adjust: 100%;
+      scroll-behavior: smooth;
+    }
 
-    <link rel="icon" type="image/png" href="assets/favicon.png" />
-    <link rel="apple-touch-icon" href="assets/icon.png" />
-    <link rel="stylesheet" href="styles.css" />
-  </head>
+    body {
+      background-color: var(--background);
+      color: var(--foreground);
+      font-family: var(--font-sans);
+      font-size: 15px;
+      line-height: 1.65;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+      text-rendering: optimizeLegibility;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
 
-  <body>
-    <header class="site-header">
-      <div class="nav-container">
-        <a href="index.html" class="brand">
-          <img
-            src="assets/icon.png"
-            alt="ExecRelay Terminal icon"
-            class="brand-icon"
-          />
-          <span>ExecRelay</span>
-        </a>
+    ::selection {
+      background: rgba(138, 180, 255, 0.25);
+      color: var(--foreground);
+    }
 
-        <nav aria-label="Main navigation">
-          <ul class="nav-links">
-            <li>
-              <a href="index.html" class="active" aria-current="page">
-                Overview
-              </a>
-            </li>
+    :focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: 2px;
+      border-radius: 4px;
+    }
 
-            <li>
-              <a href="download.html"> Download </a>
-            </li>
+    a {
+      color: inherit;
+      text-decoration: none;
+    }
 
-            <li>
-              <a
-                href="https://github.com/MaikesiG/ExecRelay"
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                GitHub
-              </a>
-            </li>
+    code {
+      font-family: var(--font-mono);
+      font-size: 0.875em;
+      background: var(--subtle);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 0.1em 0.35em;
+    }
 
-            <li class="lang-switch">
-              <a href="./" lang="en" hreflang="en" class="active" aria-current="true">EN</a>
-              <span aria-hidden="true">|</span>
-              <a href="zh/" lang="zh-CN" hreflang="zh-CN">中文</a>
-            </li>
-          </ul>
-        </nav>
-      </div>
-    </header>
+    /* Header */
+    .site-header {
+      position: sticky;
+      top: 0;
+      z-index: 40;
+      background: rgba(10, 10, 11, 0.88);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border);
+      height: 3.5rem;
+    }
 
-    <main class="content-container">
-      <!-- Hero -->
-      <section class="hero">
-        <img class="app-icon" src="assets/icon.png" alt="ExecRelay app icon" />
+    .header-container {
+      max-width: var(--container-max-width);
+      margin: 0 auto;
+      padding: 0 1.5rem;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+    }
 
-        <div class="hero-badge">ExecRelay Terminal v0.1.2</div>
+    .brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.625rem;
+      font-size: 0.9375rem;
+      font-weight: 600;
+      letter-spacing: -0.015em;
+      color: var(--foreground);
+      transition: color 0.15s ease;
+    }
 
-        <h1 class="hero-title">ExecRelay Terminal</h1>
+    .brand:hover {
+      color: var(--muted);
+    }
 
-        <p class="hero-tagline">
-          Run anything. Trace everything. Verify what actually happened.
-        </p>
+    .brand-icon {
+      width: 22px;
+      height: 22px;
+      border-radius: 4px;
+      object-fit: contain;
+    }
 
-        <p class="hero-description">
-          A local-first engineering terminal for capturing execution evidence,
-          observing repository changes, and explicitly verifying engineering
-          work.
-        </p>
+    .nav-links {
+      display: flex;
+      align-items: center;
+      gap: 1.5rem;
+      list-style: none;
+    }
 
-        <div class="cta-group">
-          <a href="download.html" class="btn btn-primary">
-            Download for macOS
-          </a>
+    .nav-links a {
+      font-size: 0.875rem;
+      color: var(--muted);
+      text-decoration: underline;
+      text-decoration-color: transparent;
+      text-underline-offset: 6px;
+      text-decoration-thickness: 2px;
+      transition: color 0.15s ease, text-decoration-color 0.15s ease;
+    }
 
-          <a
-            href="https://github.com/MaikesiG/ExecRelay"
-            class="btn btn-secondary"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            View on GitHub
-          </a>
-        </div>
-      </section>
+    .nav-links a:hover {
+      color: var(--foreground);
+      text-decoration-color: var(--border-strong);
+    }
 
-      <!-- Core Surfaces -->
-      <section class="section">
-        <h2 class="section-title">Core Surfaces</h2>
+    .nav-links a.active {
+      color: var(--foreground);
+      text-decoration-color: var(--foreground);
+    }
 
-        <p class="section-intro">
-          Four integrated surfaces designed for transparent, verified
-          engineering execution.
-        </p>
+    /* Main Container */
+    .content-container {
+      max-width: var(--container-max-width);
+      margin: 0 auto;
+      padding: 3.5rem 1.5rem 5rem;
+      width: 100%;
+      flex: 1;
+    }
 
-        <div class="feature-grid">
-          <article class="feature-card">
-            <h3 class="feature-name">Terminal</h3>
+    /* Hero Section */
+    .hero {
+      text-align: left;
+      margin-bottom: 2.75rem;
+    }
 
-            <p class="feature-desc">
-              Real PTY-backed engineering terminal for everyday command-line
-              workflows, split panes, and interactive tools.
-            </p>
-          </article>
+    .kicker {
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      font-weight: 500;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 0.875rem;
+    }
 
-          <article class="feature-card">
-            <h3 class="feature-name">Capture</h3>
+    .hero-title {
+      font-size: clamp(2rem, 5vw, 2.75rem);
+      font-weight: 600;
+      letter-spacing: -0.03em;
+      line-height: 1.15;
+      color: var(--foreground);
+      margin-bottom: 0.75rem;
+    }
 
-            <p class="feature-desc">
-              Structured evidence for executed commands and observed outcomes,
-              preserving raw process truth without inferring success from
-              terminal text.
-            </p>
-          </article>
+    .hero-tagline {
+      font-size: clamp(1.0625rem, 2.5vw, 1.25rem);
+      color: var(--foreground);
+      font-weight: 400;
+      line-height: 1.45;
+      margin-bottom: 0.875rem;
+    }
 
-          <article class="feature-card">
-            <h3 class="feature-name">Changes</h3>
+    .hero-description {
+      font-size: 0.9375rem;
+      color: var(--muted);
+      max-width: 44rem;
+      line-height: 1.7;
+      margin-bottom: 2rem;
+    }
 
-            <p class="feature-desc">
-              Repository changes observed during execution windows, tracking
-              file modifications alongside process runs.
-            </p>
-          </article>
+    /* CTA Buttons */
+    .cta-group {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      flex-wrap: wrap;
+    }
 
-          <article class="feature-card">
-            <h3 class="feature-name">Verify</h3>
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.375rem;
+      height: 2.5rem;
+      padding: 0 1.125rem;
+      border-radius: 6px;
+      font-size: 0.875rem;
+      font-weight: 500;
+      text-decoration: none;
+      white-space: nowrap;
+      transition: color 0.15s ease, background-color 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
+      cursor: pointer;
+    }
 
-            <p class="feature-desc">
-              Explicit verification checks with retained run history,
-              deterministic criteria evaluations, and monorepo working directory
-              support.
-            </p>
-          </article>
-        </div>
-      </section>
+    .btn:active {
+      transform: translateY(1px);
+    }
 
-      <!-- Trust & Verification -->
-      <section class="section">
-        <h2 class="section-title">Trust &amp; Verification</h2>
+    .btn-primary {
+      background-color: var(--foreground);
+      color: var(--background);
+      border: 1px solid var(--foreground);
+    }
 
-        <div class="text-callout">
-          <strong>Process Truth:</strong>
-          ExecRelay uses native process outcomes and explicit verification
-          results rather than inferring engineering success from terminal text.
-          Exit codes and process supervision establish ground truth.
-        </div>
-      </section>
+    .btn-primary:hover {
+      background-color: #ffffff;
+      border-color: #ffffff;
+      color: var(--background);
+    }
 
-      <!-- Local-First Architecture -->
-      <section class="section">
-        <h2 class="section-title">Local-First Architecture</h2>
+    .btn-secondary {
+      background-color: transparent;
+      color: var(--foreground);
+      border: 1px solid var(--border-strong);
+    }
 
-        <div class="text-callout">
-          <strong>Privacy by Design:</strong>
-          ExecRelay v0.1.2 requires no ExecRelay account. Core execution runs
-          entirely on your local machine, and local workspace data remains on
-          the local application unless you choose to use external network tools
-          from your terminal. Normal terminal operation remains independent from
-          telemetry features—the terminal survives even if telemetry fails.
-        </div>
-      </section>
-    </main>
+    .btn-secondary:hover {
+      border-color: var(--foreground);
+      background-color: var(--subtle);
+    }
 
-    <!-- Footer -->
-    <footer class="site-footer">
-      <div class="footer-container">
-        <div class="footer-brand">
-          <strong>ExecRelay</strong>
-          &mdash; Local-first execution harness.
-        </div>
+    /* Release & Platform Metadata Area */
+    .meta-strip {
+      border-top: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
+      padding: 1.5rem 0;
+      margin-bottom: 3.5rem;
+    }
 
-        <ul class="footer-links">
-          <li>
-            <a
-              href="https://github.com/MaikesiG/ExecRelay"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              GitHub
-            </a>
-          </li>
+    .meta-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 1.25rem;
+    }
 
-          <li>
-            <a
-              href="https://github.com/MaikesiG/ExecRelay/releases"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              Releases
-            </a>
-          </li>
+    @media (min-width: 640px) {
+      .meta-grid {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 1.5rem 2rem;
+      }
+    }
 
-          <li>
-            <a
-              href="https://github.com/MaikesiG/ExecRelay/issues"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              Issues
-            </a>
-          </li>
+    @media (min-width: 860px) {
+      .meta-grid {
+        grid-template-columns: repeat(4, 1fr);
+      }
+    }
+
+    .meta-item dt {
+      font-family: var(--font-mono);
+      font-size: 0.6875rem;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 0.35rem;
+    }
+
+    .meta-item dd {
+      font-size: 0.8125rem;
+      color: var(--foreground);
+      line-height: 1.45;
+    }
+
+    /* Section Components */
+    .section {
+      margin-bottom: 3.75rem;
+    }
+
+    .section-header {
+      margin-bottom: 1.5rem;
+    }
+
+    .section-title {
+      font-size: 1.375rem;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+      color: var(--foreground);
+      margin-bottom: 0.5rem;
+    }
+
+    .section-desc {
+      font-size: 0.9375rem;
+      color: var(--muted);
+      max-width: 44rem;
+      line-height: 1.6;
+    }
+
+    /* Feature Grid */
+    .features-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 1.5rem;
+    }
+
+    @media (min-width: 640px) {
+      .features-grid {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 2rem 2.5rem;
+      }
+    }
+
+    .feature-item {
+      display: flex;
+      flex-direction: column;
+      gap: 0.35rem;
+    }
+
+    .feature-name {
+      font-size: 1rem;
+      font-weight: 600;
+      color: var(--foreground);
+      letter-spacing: -0.015em;
+    }
+
+    .feature-desc {
+      font-size: 0.875rem;
+      color: var(--muted);
+      line-height: 1.65;
+    }
+
+    /* Callout Boxes */
+    .callout-box {
+      border-left: 2px solid var(--border-strong);
+      padding: 0.5rem 0 0.5rem 1.25rem;
+      font-size: 0.9375rem;
+      color: var(--muted);
+      line-height: 1.7;
+      margin-bottom: 1.5rem;
+    }
+
+    .callout-box:last-child {
+      margin-bottom: 0;
+    }
+
+    .callout-box strong {
+      color: var(--foreground);
+      font-weight: 500;
+    }
+
+    /* Footer */
+    .site-footer {
+      border-top: 1px solid var(--border);
+      padding: 2.5rem 0;
+      margin-top: auto;
+      font-size: 0.875rem;
+      color: var(--muted);
+    }
+
+    .footer-container {
+      max-width: var(--container-max-width);
+      margin: 0 auto;
+      padding: 0 1.5rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1.25rem;
+      justify-content: space-between;
+    }
+
+    @media (min-width: 640px) {
+      .footer-container {
+        flex-direction: row;
+        align-items: center;
+      }
+    }
+
+    .footer-brand strong {
+      color: var(--foreground);
+      font-weight: 500;
+    }
+
+    .footer-links {
+      display: flex;
+      gap: 1.5rem;
+      list-style: none;
+    }
+
+    .footer-links a {
+      color: var(--muted);
+      transition: color 0.15s ease;
+    }
+
+    .footer-links a:hover {
+      color: var(--foreground);
+    }
+
+    /* Responsive Polish */
+    @media (max-width: 480px) {
+      .content-container {
+        padding: 2.5rem 1.25rem 4rem;
+      }
+      .cta-group {
+        flex-direction: column;
+        align-items: stretch;
+      }
+      .cta-group .btn {
+        width: 100%;
+      }
+      .nav-links {
+        gap: 1rem;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header class="site-header">
+    <div class="header-container">
+      <a href="index.html" class="brand">
+        <img src="assets/icon.png" alt="ExecRelay Terminal icon" class="brand-icon">
+        <span>ExecRelay</span>
+      </a>
+      <nav aria-label="Main navigation">
+        <ul class="nav-links">
+          <li><a href="index.html" class="active" aria-current="page">Overview</a></li>
+          <li><a href="download.html">Download</a></li>
+          <li><a href="https://github.com/MaikesiG/ExecRelay" target="_blank" rel="noopener noreferrer">GitHub</a></li>
         </ul>
+      </nav>
+    </div>
+  </header>
+
+  <main class="content-container">
+    <!-- Hero -->
+    <section class="hero">
+      <div class="kicker">ENGINEERING EXECUTION CONTROL PLANE</div>
+      <h1 class="hero-title">ExecRelay Terminal</h1>
+      <p class="hero-tagline">Run anything. Trace everything. Verify what actually happened.</p>
+      <p class="hero-description">
+        A local-first engineering terminal for capturing execution evidence, observing repository changes, and explicitly verifying engineering work.
+      </p>
+      <div class="cta-group">
+        <a href="download.html" class="btn btn-primary">
+          Download v0.2.0 <span aria-hidden="true">&darr;</span>
+        </a>
+        <a href="https://github.com/MaikesiG/ExecRelay/releases/tag/v0.2.0" class="btn btn-secondary" target="_blank" rel="noopener noreferrer">
+          View v0.2.0 Release <span aria-hidden="true">&nearr;</span>
+        </a>
       </div>
-    </footer>
-  </body>
+    </section>
+
+    <!-- Release & Platform Status Strip -->
+    <section class="meta-strip" aria-label="Release and platform status">
+      <dl class="meta-grid">
+        <div class="meta-item">
+          <dt>Status</dt>
+          <dd>v0.2.0 &middot; Public Release</dd>
+        </div>
+        <div class="meta-item">
+          <dt>macOS arm64</dt>
+          <dd>Fully validated &middot; Developer ID &middot; Notarized &middot; Runtime smoke</dd>
+        </div>
+        <div class="meta-item">
+          <dt>Windows x64 / ARM64</dt>
+          <dd>Build-tested &middot; CI installer smoke (real desktop pending)</dd>
+        </div>
+        <div class="meta-item">
+          <dt>Linux x64</dt>
+          <dd>Build- &amp; container-tested &middot; .deb / AppImage in Xvfb</dd>
+        </div>
+      </dl>
+    </section>
+
+    <!-- Core Surfaces -->
+    <section class="section">
+      <div class="section-header">
+        <div class="kicker">SURFACES</div>
+        <h2 class="section-title">Core Surfaces</h2>
+        <p class="section-desc">Four integrated surfaces designed for transparent, verified engineering execution.</p>
+      </div>
+      <div class="features-grid">
+        <article class="feature-item">
+          <h3 class="feature-name">Terminal</h3>
+          <p class="feature-desc">Real PTY-backed engineering terminal for everyday command-line workflows, split panes, and interactive tools.</p>
+        </article>
+        <article class="feature-item">
+          <h3 class="feature-name">Capture</h3>
+          <p class="feature-desc">Structured evidence for executed commands and observed outcomes, preserving raw process truth without inferring success from terminal text.</p>
+        </article>
+        <article class="feature-item">
+          <h3 class="feature-name">Changes</h3>
+          <p class="feature-desc">Repository changes observed during execution windows, tracking file modifications alongside process runs via read-only Git collectors.</p>
+        </article>
+        <article class="feature-item">
+          <h3 class="feature-name">Verify</h3>
+          <p class="feature-desc">Explicit verification checks with retained run history, deterministic criteria evaluations, and monorepo working directory support.</p>
+        </article>
+      </div>
+    </section>
+
+    <!-- Trust & Verification -->
+    <section class="section">
+      <div class="section-header">
+        <div class="kicker">PROCESS TRUTH</div>
+        <h2 class="section-title">Trust &amp; Verification</h2>
+      </div>
+      <div class="callout-box">
+        <strong>Process Truth:</strong> ExecRelay uses native process outcomes and explicit verification results rather than inferring engineering success from terminal text. Exit codes and process supervision establish ground truth.
+      </div>
+    </section>
+
+    <!-- Local-First Architecture -->
+    <section class="section">
+      <div class="section-header">
+        <div class="kicker">PRIVACY</div>
+        <h2 class="section-title">Local-First Architecture</h2>
+      </div>
+      <div class="callout-box">
+        <strong>Privacy by Design:</strong> ExecRelay requires no account or cloud connection. Core execution runs entirely on your local machine, and local workspace data remains on the local application unless you choose to use external network tools from your terminal. Normal terminal operation remains independent from telemetry features—the terminal survives even if telemetry fails.
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="footer-container">
+      <div class="footer-brand">
+        <strong>ExecRelay</strong> &mdash; Local-first engineering execution control plane.
+      </div>
+      <ul class="footer-links">
+        <li><a href="https://github.com/MaikesiG/ExecRelay" target="_blank" rel="noopener noreferrer">GitHub</a></li>
+        <li><a href="https://github.com/MaikesiG/ExecRelay/releases" target="_blank" rel="noopener noreferrer">Releases</a></li>
+        <li><a href="https://github.com/MaikesiG/ExecRelay/issues" target="_blank" rel="noopener noreferrer">Issues</a></li>
+      </ul>
+    </div>
+  </footer>
+</body>
 </html>
