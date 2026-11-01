@@ -58,10 +58,18 @@ const verifTypesMod = { exports: {} };
 new Function('module', 'exports', 'require', verifTypesJs)(verifTypesMod, verifTypesMod.exports, () => ({}));
 const { isVerificationCriterion, isVerificationContract, isVerificationRunStatus } = verifTypesMod.exports;
 
-// 5. Transpile verification/verificationModel.ts
+// 5. Transpile verification/verificationModel.ts (with the real workspace/pathPolicy.ts)
+const shortcutNormJs = transpileTs(path.resolve(__dirname, '../app/src/features/shortcuts/shortcutNormalization.ts'));
+const shortcutNormMod = { exports: {} };
+new Function('module', 'exports', 'require', shortcutNormJs)(shortcutNormMod, shortcutNormMod.exports, () => ({}));
+const pathPolicyJs = transpileTs(path.resolve(__dirname, '../app/src/features/workspace/pathPolicy.ts'));
+const pathPolicyMod = { exports: {} };
+new Function('module', 'exports', 'require', pathPolicyJs)(pathPolicyMod, pathPolicyMod.exports, () => shortcutNormMod.exports);
+
 const verifModelJs = transpileTs(path.resolve(__dirname, '../app/src/features/verification/verificationModel.ts'));
 const verifModelMod = { exports: {} };
 const customRequireVerifModel = (req) => {
+  if (req === '../workspace/pathPolicy') return pathPolicyMod.exports;
   if (req.includes('types')) return verifTypesMod.exports;
   if (req.includes('execution')) return execModelMod.exports;
   return {};

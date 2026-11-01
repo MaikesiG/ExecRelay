@@ -3,7 +3,11 @@
  * SHORTCUT-002: Cross-Platform Configurable Shortcuts (Navigation + Terminal Panes).
  */
 
-export type ShortcutPlatform = 'macos' | 'windows' | 'linux';
+/**
+ * Host identity for shortcuts (CROSSPLAT-005D). `unknown` is a host none of the three detectors
+ * recognized; it is never treated as macOS and gets no application shortcut bindings.
+ */
+export type ShortcutPlatform = 'macos' | 'windows' | 'linux' | 'unknown';
 
 export type NavigationCommand =
   | 'focus-terminal'
@@ -82,6 +86,7 @@ export interface KeyboardShortcutSettingsV2 {
     macos?: Partial<Record<AppCommand, ShortcutBinding>>;
     windows?: Partial<Record<AppCommand, ShortcutBinding>>;
     linux?: Partial<Record<AppCommand, ShortcutBinding>>;
+    unknown?: Partial<Record<AppCommand, ShortcutBinding>>;
   };
   bindings?: Partial<Record<string, ShortcutBinding>>;
 }

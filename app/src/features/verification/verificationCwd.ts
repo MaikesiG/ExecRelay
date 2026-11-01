@@ -18,6 +18,14 @@
  */
 
 import { runCollectorProcess } from '../evidenceCollectors/collectorRunner';
+import {
+  classifyPathSyntax,
+  hostPathPlatform,
+  isLocalPath,
+  isPathInside,
+  isRelativePath,
+  type PathPlatform,
+} from '../workspace/pathPolicy';
 
 export interface VerificationWorkingDirectoryResolution {
   ok: boolean;
@@ -34,13 +42,18 @@ export interface VerificationWorkingDirectoryResolution {
  * - "apps/web" -> workspaceRoot/apps/web
  * - Normalizes "./apps/web", "apps/web/", "apps/./web"
  * - Rejects path traversal (e.g. "../other", "../../")
- * - Rejects absolute paths (e.g. "/tmp", "/Users/...")
+ * - Rejects absolute paths (e.g. "/tmp", "/Users/...", "C:\x", "\\server\share", "\\?\C:\x")
+ *   and drive-relative/rooted Windows forms ("C:x", "\x")
  * - Rejects home directory shorthand ("~/...")
- * - Fails truthfully if workspaceRoot is missing/empty (no silent fallbacks)
+ * - Fails truthfully if workspaceRoot is missing/empty or not a local path on this host
+ *   (no silent fallbacks)
+ * - CROSSPLAT-005B: joins with the root's own separator style (`\` for a Windows root that
+ *   uses it) and keeps a bare root (`/`, `C:\`) intact.
  */
 export function resolveVerificationWorkingDirectory(
   workspaceRoot?: string | null,
   workingDirectory?: string | null,
+  host: PathPlatform = hostPathPlatform(),
 ): VerificationWorkingDirectoryResolution {
   if (!workspaceRoot || typeof workspaceRoot !== 'string' || workspaceRoot.trim().length === 0) {
     return {
@@ -49,7 +62,18 @@ export function resolveVerificationWorkingDirectory(
     };
   }
 
-  const cleanRoot = workspaceRoot.trim().replace(/[/\\\\]+$/, '');
+  const trimmedRoot = workspaceRoot.trim();
+  if (!isLocalPath(trimmedRoot, host)) {
+    return {
+      ok: false,
+      error: `Workspace root path is not a local path on this host: ${trimmedRoot}`,
+    };
+  }
+  const windowsRoot = classifyPathSyntax(trimmedRoot) !== 'posix-absolute';
+  const separator = windowsRoot && trimmedRoot.includes('\\') ? '\\' : '/';
+  // Strip trailing separators, but never past the root itself (`/`, `C:\`).
+  const strippedRoot = trimmedRoot.replace(/[/\\]+$/, '');
+  const cleanRoot = isLocalPath(strippedRoot, host) ? strippedRoot : trimmedRoot;
   const rawWorkingDir =
     workingDirectory !== undefined && workingDirectory !== null && workingDirectory.trim().length > 0
       ? workingDirectory.trim()
@@ -63,12 +87,9 @@ export function resolveVerificationWorkingDirectory(
     };
   }
 
-  // Security check: Reject absolute paths (starting with / or \ or Windows drive letter)
-  if (
-    rawWorkingDir.startsWith('/') ||
-    rawWorkingDir.startsWith('\\') ||
-    /^[a-zA-Z]:[/\\]/.test(rawWorkingDir)
-  ) {
+  // Security check: Reject anything that is not a plain relative path (POSIX/drive/UNC/extended
+  // absolute, drive-relative or rooted Windows forms)
+  if (!isRelativePath(rawWorkingDir)) {
     return {
       ok: false,
       error: `Working directory must be relative to the workspace root: ${rawWorkingDir}`,
@@ -98,7 +119,17 @@ export function resolveVerificationWorkingDirectory(
   }
 
   const relativePath = normalizedSegments.length === 0 ? '.' : normalizedSegments.join('/');
-  const resolvedPath = relativePath === '.' ? cleanRoot : `${cleanRoot}/${relativePath}`;
+  const joiner = /[/\\]$/.test(cleanRoot) ? '' : separator;
+  const resolvedPath =
+    relativePath === '.' ? cleanRoot : `${cleanRoot}${joiner}${normalizedSegments.join(separator)}`;
+
+  // Defense in depth: the lexical result must stay inside the root.
+  if (!isPathInside(cleanRoot, resolvedPath, host)) {
+    return {
+      ok: false,
+      error: `Working directory cannot escape workspace root: ${rawWorkingDir}`,
+    };
+  }
 
   return {
     ok: true,

@@ -9,7 +9,11 @@
 //! 6. Termination events (`terminal://exit`) use atomic guards to guarantee at most one exit event.
 
 use crate::error::{Result, TerminalError};
+use crate::platform::terminal::{
+    ChildWaitOutcome, TerminalLifecycle, TerminalLifecycleFacts,
+};
 use crate::terminal::manager::TerminalSessionManager;
+use crate::terminal::shell::IntegrationHandshake;
 use crate::terminal::types::{
     BytePayload, CloseTerminalSessionInput, CreateTerminalSessionInput, ExitReason,
     ResizeTerminalInput, TerminalErrorEvent, TerminalErrorOperation, TerminalExitEvent,
@@ -18,6 +22,7 @@ use crate::terminal::types::{
 use std::io::Read;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::time::Duration;
 
 /// Hard maximum input payload size accepted for terminal write operations (64 KiB).
 ///
@@ -43,7 +48,7 @@ pub const EVENT_ERROR: &str = "terminal://error";
 pub enum ReaderReadResult {
     /// Bytes were read successfully from the PTY.
     Bytes(usize),
-    /// PTY stream reached EOF (child process exited normally).
+    /// PTY stream reached EOF. This does not itself prove that the child exited.
     Eof,
     /// Expected close-related I/O condition (e.g. EIO upon slave closure on Unix).
     ExpectedClose,
@@ -117,8 +122,9 @@ pub fn spawn_output_reader(
     session_id: String,
     mut reader: Box<dyn Read + Send>,
     app_handle: tauri::AppHandle,
-    exit_guard: Arc<AtomicBool>,
+    lifecycle: TerminalLifecycle,
     expected_nonce: Option<String>,
+    mut handshake: Option<IntegrationHandshake>,
 ) -> Result<()> {
     let thread_name = format!("pty-reader-{}", &session_id);
     std::thread::Builder::new()
@@ -128,8 +134,9 @@ pub fn spawn_output_reader(
                 &session_id,
                 &mut *reader,
                 &app_handle,
-                &exit_guard,
+                &lifecycle,
                 expected_nonce.as_deref(),
+                handshake.as_mut(),
             );
         })
         .map_err(|e| TerminalError::ReaderSetupFailed(e.to_string()))?;
@@ -142,8 +149,9 @@ fn run_reader_loop(
     session_id: &str,
     reader: &mut (dyn Read + Send),
     app_handle: &tauri::AppHandle,
-    exit_guard: &Arc<AtomicBool>,
+    lifecycle: &TerminalLifecycle,
     expected_nonce: Option<&str>,
+    mut handshake: Option<&mut IntegrationHandshake>,
 ) {
     use tauri::Emitter;
     let mut buffer = [0u8; PTY_READ_BUFFER_BYTES];
@@ -154,6 +162,9 @@ fn run_reader_loop(
         let res = reader.read(&mut buffer);
         match classify_read_result(&res) {
             ReaderReadResult::Bytes(n) => {
+                if let Some(handshake) = handshake.as_deref_mut() {
+                    handshake.observe(&buffer[..n]);
+                }
                 #[cfg(debug_assertions)]
                 trace_dev_shell_markers(
                     &buffer[..n],
@@ -166,48 +177,70 @@ fn run_reader_loop(
                 };
                 if let Err(err) = app_handle.emit(EVENT_OUTPUT, &event_payload) {
                     eprintln!("terminal://output emit error for {session_id}: {err}");
+                    lifecycle.record_reader_failure(err.to_string());
                     break;
                 }
             }
             ReaderReadResult::Eof => {
-                emit_exit_once(
-                    app_handle,
-                    session_id,
-                    exit_guard,
-                    ExitReason::ReaderEof,
-                    None,
-                );
+                lifecycle.record_reader_eof();
                 break;
             }
             ReaderReadResult::ExpectedClose => {
-                emit_exit_once(
-                    app_handle,
-                    session_id,
-                    exit_guard,
-                    ExitReason::Closed,
-                    None,
-                );
+                lifecycle.record_reader_eof();
                 break;
             }
             ReaderReadResult::UnexpectedError(err_msg) => {
                 let error_payload = TerminalErrorEvent {
                     session_id: Some(session_id.to_string()),
                     code: "IO_ERROR".to_string(),
-                    message: err_msg,
+                    message: err_msg.clone(),
                     operation: TerminalErrorOperation::Read,
                 };
                 let _ = app_handle.emit(EVENT_ERROR, &error_payload);
-                emit_exit_once(
-                    app_handle,
-                    session_id,
-                    exit_guard,
-                    ExitReason::ChildWaitError,
-                    None,
-                );
+                lifecycle.record_reader_failure(err_msg);
                 break;
             }
         }
     }
+}
+
+/// Derives the existing exit event shape exclusively from authoritative child evidence.
+fn exit_event_from_facts(
+    facts: &TerminalLifecycleFacts,
+) -> Option<(ExitReason, Option<i32>)> {
+    match &facts.child {
+        Some(ChildWaitOutcome::Exited { exit_code }) => {
+            let reason = if facts.teardown.requested {
+                ExitReason::Closed
+            } else {
+                ExitReason::Exited
+            };
+            Some((reason, Some(*exit_code)))
+        }
+        Some(ChildWaitOutcome::WaitFailed(_)) => Some((ExitReason::ChildWaitError, None)),
+        None => None,
+    }
+}
+
+/// Observes authoritative child completion independently from PTY stream closure.
+fn spawn_exit_observer(
+    session_id: String,
+    lifecycle: TerminalLifecycle,
+    manager: TerminalSessionManager,
+    app_handle: tauri::AppHandle,
+    exit_guard: Arc<AtomicBool>,
+) -> Result<()> {
+    std::thread::Builder::new()
+        .name(format!("terminal-exit-observer-{session_id}"))
+        .spawn(move || {
+            let facts = lifecycle.wait_for_exit_event(Duration::from_millis(250));
+            if let Some((reason, exit_code)) = exit_event_from_facts(&facts) {
+                manager.remove_after_child_wait(&session_id);
+                emit_exit_once(&app_handle, &session_id, &exit_guard, reason, exit_code);
+            }
+        })
+        .map_err(|error| TerminalError::ReaderSetupFailed(error.to_string()))?;
+    Ok(())
 }
 
 #[cfg(debug_assertions)]
@@ -300,12 +333,46 @@ pub fn terminal_create_session(
         }
     };
 
+    let lifecycle = match manager.get_session_lifecycle(&session_id) {
+        Ok(lifecycle) => lifecycle,
+        Err(err) => {
+            let _ = manager.close(CloseTerminalSessionInput {
+                session_id: session_id.clone(),
+            });
+            return Err(err);
+        }
+    };
+
+    let handshake = match manager.get_session_integration_handshake(&session_id) {
+        Ok(handshake) => handshake,
+        Err(err) => {
+            let _ = manager.close(CloseTerminalSessionInput {
+                session_id: session_id.clone(),
+            });
+            return Err(err);
+        }
+    };
+
     if let Err(err) = spawn_output_reader(
         session_id.clone(),
         reader,
+        app_handle.clone(),
+        lifecycle.clone(),
+        session_info.integration_nonce.clone(),
+        handshake,
+    ) {
+        let _ = manager.close(CloseTerminalSessionInput {
+            session_id: session_id.clone(),
+        });
+        return Err(err);
+    }
+
+    if let Err(err) = spawn_exit_observer(
+        session_id.clone(),
+        lifecycle,
+        manager.inner().clone(),
         app_handle,
         exit_guard,
-        session_info.integration_nonce.clone(),
     ) {
         let _ = manager.close(CloseTerminalSessionInput {
             session_id: session_id.clone(),
@@ -417,7 +484,6 @@ pub fn terminal_resize(
 /// Closes a terminal session, terminates its child process, and frees in-memory state.
 #[tauri::command]
 pub fn terminal_close_session(
-    app_handle: tauri::AppHandle,
     session_id: Option<String>,
     input: Option<CloseTerminalSessionInput>,
     manager: tauri::State<'_, TerminalSessionManager>,
@@ -428,10 +494,7 @@ pub fn terminal_close_session(
         (None, None) => return Err(TerminalError::SessionNotFound(String::new())),
     };
 
-    let (exit_code, exit_guard) = manager.close_session(&target_id)?;
-    emit_exit_once(&app_handle, &target_id, &exit_guard, ExitReason::Closed, exit_code);
-
-    Ok(())
+    manager.close_session(&target_id)
 }
 
 /// Retrieves metadata for a specific terminal session.
@@ -461,6 +524,9 @@ pub fn terminal_list_sessions(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::platform::terminal::{
+        DispatchOutcome, InterruptFacts, InterruptObservation, PtyStreamState, TeardownFacts,
+    };
     use std::io::ErrorKind;
 
     #[test]
@@ -516,6 +582,40 @@ mod tests {
         assert!(guard.swap(true, Ordering::SeqCst));
         // Third attempt also rejected
         assert!(guard.swap(true, Ordering::SeqCst));
+    }
+
+    #[test]
+    fn test_exit_event_requires_child_wait_evidence() {
+        let eof_only = TerminalLifecycleFacts {
+            stream: PtyStreamState::Eof,
+            child: None,
+            interrupt: InterruptFacts::default(),
+            teardown: TeardownFacts {
+                requested: false,
+                dispatch: None,
+                completed: false,
+            },
+        };
+        assert_eq!(exit_event_from_facts(&eof_only), None);
+
+        let exited = TerminalLifecycleFacts {
+            stream: PtyStreamState::Open,
+            child: Some(ChildWaitOutcome::Exited { exit_code: 9 }),
+            interrupt: InterruptFacts {
+                requested: true,
+                dispatch: Some(DispatchOutcome::Accepted),
+                observation: InterruptObservation::Unknown,
+            },
+            teardown: TeardownFacts {
+                requested: false,
+                dispatch: None,
+                completed: false,
+            },
+        };
+        assert_eq!(
+            exit_event_from_facts(&exited),
+            Some((ExitReason::Exited, Some(9)))
+        );
     }
 
     #[test]

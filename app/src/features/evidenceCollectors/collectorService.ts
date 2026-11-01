@@ -158,3 +158,16 @@ export async function collectRepositoryEvidence(
     return { run };
   }
 }
+
+/**
+ * Before-snapshot for a Verify run. Returns null, running nothing, unless the run has an active
+ * target session and that session's cwd: without a session the run fails at dispatch, and
+ * without a cwd Git would run in ExecRelay's own process cwd. Attribution is then unavailable
+ * for that run.
+ */
+export async function collectPreVerificationSnapshot(
+  options: CollectRepositoryOptions & { targetSessionId?: string | null },
+): Promise<CollectionResult | null> {
+  if (!options.targetSessionId || !options.cwd) return null;
+  return collectRepositoryEvidence(options);
+}

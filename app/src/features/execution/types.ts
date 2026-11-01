@@ -74,6 +74,29 @@ export type ExecutionLifecycle =
  */
 export type ExecutionOutcome = 'unknown' | 'succeeded' | 'failed';
 
+/**
+ * Evidence Health represents whether ExecRelay itself observed the execution reliably.
+ * It is independent of ExecutionOutcome: a failed command (exit 1, exit 127) observed
+ * through trusted integration is 'healthy' evidence of a failure.
+ * - 'healthy': ExecRelay's integration and evidence pipeline worked as designed.
+ * - 'degraded': Evidence is usable but incomplete (e.g. exit status unavailable).
+ * - 'error': An ExecRelay-owned subsystem (shell hook, parser, pipeline) failed.
+ */
+export type ExecutionEvidenceHealth = 'healthy' | 'degraded' | 'error';
+
+/**
+ * Specific evidence health issues, recorded by the subsystem that detected them.
+ * - 'shell-integration-failed': the trusted shell hook reported its own failure (error).
+ * - 'derived-evidence-failed': derived processing failed; raw evidence retained (degraded).
+ * - 'trusted-integration-unavailable': no trusted lifecycle marker ended the execution (degraded).
+ * - 'exit-status-unavailable': the execution ended without a trusted numeric exit (degraded).
+ */
+export type EvidenceHealthIssue =
+  | 'shell-integration-failed'
+  | 'derived-evidence-failed'
+  | 'trusted-integration-unavailable'
+  | 'exit-status-unavailable';
+
 export type AgentExecutionLinkSource =
   | 'structured-agent-event'
   | 'dedicated-agent-pane'
@@ -204,6 +227,16 @@ export interface Execution {
    * NEVER fabricate exit codes.
    */
   exitCode?: number | null;
+
+  /**
+   * ExecRelay/evidence health, independent of outcome (see ExecutionEvidenceHealth).
+   */
+  evidenceHealth?: ExecutionEvidenceHealth;
+
+  /**
+   * Issues behind a non-healthy evidenceHealth.
+   */
+  evidenceIssues?: EvidenceHealthIssue[];
 
   /**
    * Whether diagnostic/error text was detected in the output (heuristic hint).

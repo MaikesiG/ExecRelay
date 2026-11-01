@@ -4,6 +4,7 @@ import type {
   ActorType,
   EvidenceBlock,
   EvidenceBlockType,
+  EvidenceHealthIssue,
   Execution,
   ExecutionCompletionSource,
   ExecutionIntent,
@@ -21,6 +22,7 @@ export type {
   ActorType,
   EvidenceBlock,
   EvidenceBlockType,
+  EvidenceHealthIssue,
   Execution,
   ExecutionCompletionSource,
   ExecutionIntent,
@@ -110,6 +112,8 @@ export type TranscriptBlock = {
   outcomeTrusted?: boolean;
   shellIntegrationLevel?: ShellIntegrationLevel;
   exitCode?: number | null;
+  /** Evidence health issues recorded by the producing subsystem (see EvidenceHealthIssue). */
+  evidenceIssues?: EvidenceHealthIssue[];
   hasError?: boolean;
   hasDiagnosticError?: boolean;
   rawCommand?: string;

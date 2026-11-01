@@ -22,6 +22,7 @@ import {
   normalizeKeyboardEvent,
   matchesBinding,
   areBindingsEqual,
+  formatShortcutDisplay,
 } from './shortcutNormalization';
 import { validateShortcutBinding } from './reservedShortcuts';
 import {
@@ -103,17 +104,18 @@ export class ShortcutRegistry {
    * Defaults(platform) + User Overrides(platform) = Effective Bindings.
    * Guarantees that at most one command maps to any specific shortcut on this platform.
    */
-  public getEffectiveBindings(): Record<AppCommand, ShortcutBinding> {
+  public getEffectiveBindings(): Partial<Record<AppCommand, ShortcutBinding>> {
     const defaults = getDefaultShortcuts(this.platform);
     const effective: Partial<Record<AppCommand, ShortcutBinding>> = {};
 
     for (const cmd of ALL_CONFIGURABLE_COMMANDS) {
       if (!this.isCommandEnabled(cmd)) continue;
-      const override = this.overrides[cmd];
-      effective[cmd] = override ? { ...override } : { ...defaults[cmd] };
+      // CROSSPLAT-005D: an unknown host has no defaults, so a command without an override stays unbound.
+      const binding = this.overrides[cmd] ?? defaults[cmd];
+      if (binding) effective[cmd] = { ...binding };
     }
 
-    return effective as Record<AppCommand, ShortcutBinding>;
+    return effective;
   }
 
   /**
@@ -243,7 +245,8 @@ export class ShortcutRegistry {
 
     const prospective: Partial<Record<AppCommand, ShortcutBinding>> = {};
     for (const cmd of enabled) {
-      prospective[cmd] = newOverrides[cmd] ? { ...newOverrides[cmd]! } : { ...defaults[cmd] };
+      const binding = newOverrides[cmd] ?? defaults[cmd];
+      if (binding) prospective[cmd] = { ...binding };
     }
 
     // Check pairwise uniqueness
@@ -251,7 +254,7 @@ export class ShortcutRegistry {
       for (let j = i + 1; j < enabled.length; j++) {
         const cmdA = enabled[i];
         const cmdB = enabled[j];
-        if (areBindingsEqual(prospective[cmdA]!, prospective[cmdB]!)) {
+        if (areBindingsEqual(prospective[cmdA], prospective[cmdB])) {
           errors.push(`Conflict: ${cmdA} and ${cmdB} share the same shortcut`);
         }
       }
@@ -259,7 +262,8 @@ export class ShortcutRegistry {
 
     // Check safety validation
     for (const cmd of enabled) {
-      const binding = prospective[cmd]!;
+      const binding = prospective[cmd];
+      if (!binding) continue;
       const val = validateShortcutBinding(binding, {
         platform: this.platform,
         targetCommand: cmd,
@@ -369,3 +373,15 @@ export class ShortcutRegistry {
 
 // Global shared singleton for the application
 export const defaultShortcutRegistry = new ShortcutRegistry();
+
+/**
+ * CROSSPLAT-005D: tooltip suffix for a command's effective binding, e.g. " (⌘2)" or " (Ctrl+2)",
+ * from the same registry and host that dispatch it; empty when the command is unbound.
+ */
+export function formatCommandShortcutHint(
+  command: AppCommand,
+  registry: ShortcutRegistry = defaultShortcutRegistry,
+): string {
+  const binding = registry.resolveBinding(command);
+  return binding ? ` (${formatShortcutDisplay(binding, registry.getPlatform())})` : '';
+}

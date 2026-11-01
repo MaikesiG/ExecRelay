@@ -304,7 +304,7 @@ console.log('\\n--- Test 3: Changes Repository Metadata Header Component Semanti
 
   // E. Open repository in Finder icon button
   assert.ok(
-    viewTsx.includes('Open in Finder\\n${effectiveRepoRoot}'),
+    viewTsx.includes('Open in ${fileManagerName}\\n${effectiveRepoRoot}'),
     'Must have Open in Finder icon button with actual path in tooltip',
   );
   assert.ok(

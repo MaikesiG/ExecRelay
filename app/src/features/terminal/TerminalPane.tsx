@@ -69,6 +69,11 @@ export interface TerminalPaneHandle {
    * Manually triggers xterm fit and synchronizes dimensions with the PTY session.
    */
   refit: () => void;
+
+  /**
+   * Explicitly starts or restarts a shell session in an inert restored or exited pane.
+   */
+  startSession?: () => void;
 }
 
 export interface TerminalPaneProps {
@@ -79,6 +84,7 @@ export interface TerminalPaneProps {
   cwd?: string;
   workspaceId?: string;
   isActive?: boolean;
+  autoStartSession?: boolean;
   onClick?: (event: React.MouseEvent<HTMLDivElement>) => void;
   onStatusChange?: (
     status: TerminalSessionStatus,
@@ -108,6 +114,7 @@ export const TerminalPane = forwardRef<TerminalPaneHandle, TerminalPaneProps>(
       cwd,
       workspaceId = 'workspace-default',
       isActive = true,
+      autoStartSession = true,
       onClick,
       onStatusChange,
       onDimensionsChange,
@@ -214,6 +221,10 @@ export const TerminalPane = forwardRef<TerminalPaneHandle, TerminalPaneProps>(
           const runtime = terminalRuntimeRegistry.get(paneId);
           runtime?.refit();
         },
+        startSession: () => {
+          const runtime = terminalRuntimeRegistry.get(paneId);
+          runtime?.restartSession();
+        },
       }),
       [paneId, status],
     );
@@ -229,6 +240,7 @@ export const TerminalPane = forwardRef<TerminalPaneHandle, TerminalPaneProps>(
         workspaceId,
         shellKind,
         cwd,
+        autoStartSession,
         onStatusChange: (newStatus, info, err) => {
           setStatus(newStatus);
           setErrorMessage(err);

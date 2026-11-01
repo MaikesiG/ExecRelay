@@ -65,6 +65,36 @@ export async function updateWindowTitle(title: string): Promise<void> {
   }
 }
 
+/** Native event: the app is quitting and waits for pending persistence. */
+export const APP_FLUSH_BEFORE_EXIT_EVENT = 'app://flush-before-exit';
+
+/**
+ * STATE-PERSISTENCE-SCALE-001: a graceful app quit (Cmd-Q) fires no page lifecycle event.
+ * The native side emits APP_FLUSH_BEFORE_EXIT_EVENT on exit and waits briefly before tearing
+ * down, so `flush` must write synchronously. Returns an unsubscribe.
+ */
+export function onAppExitRequested(flush: () => void): () => void {
+  const isTauri =
+    typeof window !== 'undefined' &&
+    ('__TAURI_INTERNALS__' in window || '__TAURI__' in window);
+  if (!isTauri) return () => {};
+  let stopped = false;
+  let unlisten: (() => void) | null = null;
+  import('@tauri-apps/api/event')
+    .then(({ listen }) => listen(APP_FLUSH_BEFORE_EXIT_EVENT, flush))
+    .then((stop) => {
+      if (stopped) stop();
+      else unlisten = stop;
+    })
+    .catch(() => {
+      // Ignored in headless/unsupported test environments
+    });
+  return () => {
+    stopped = true;
+    unlisten?.();
+  };
+}
+
 /**
  * Custom finder opener hook (for deterministic testing & headless mock injection).
  */
@@ -77,7 +107,9 @@ export function setCustomFinderOpener(
 }
 
 /**
- * Opens a repository root path in macOS Finder using safe structured invocation.
+ * Opens a repository root path in the desktop file manager (Finder on macOS,
+ * `xdg-open` on Linux) using safe structured invocation. A native failure is thrown
+ * so callers can report it; it is never treated as success.
  */
 export async function openInFinder(path?: string): Promise<void> {
   if (!path || typeof path !== 'string' || path.trim().length === 0) {
@@ -99,6 +131,7 @@ export async function openInFinder(path?: string): Promise<void> {
       return;
     } catch (err) {
       console.warn('[WorkspaceContext] Tauri open_in_finder failed:', err);
+      throw new Error(err instanceof Error ? err.message : String(err), { cause: err });
     }
   }
 
@@ -250,6 +283,8 @@ export function bindWorkspaceRootPath(
   return {
     ...workspace,
     rootPath: rootPath ?? undefined,
+    unavailableRootPath: undefined,
+    rootReachable: undefined,
     projectCwd: rootPath ?? undefined,
     repository: repository ?? undefined,
     repositorySnapshots: repoChanged ? undefined : workspace.repositorySnapshots,

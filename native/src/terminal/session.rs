@@ -1,12 +1,12 @@
 //! Terminal session representation managing PTY handles and child process lifecycle.
 
 use crate::error::{Result, TerminalError};
-use crate::terminal::shell::ShellConfig;
+use crate::platform::terminal::{TerminalBackend, TerminalLifecycle};
+use crate::terminal::shell::{IntegrationHandshake, ShellBootstrap, ShellConfig};
 use crate::terminal::types::{ShellKind, TerminalSessionInfo, TerminalSessionStatus};
-use portable_pty::{Child, MasterPty, PtySize};
-use std::io::Write;
-use std::sync::atomic::AtomicBool;
-use std::sync::{Arc, Mutex};
+use portable_pty::PtySize;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 
 /// Initialization parameters for constructing a `TerminalSession`.
 pub struct TerminalSessionParams {
@@ -16,10 +16,9 @@ pub struct TerminalSessionParams {
     pub rows: u16,
     pub cwd: Option<String>,
     pub integration_nonce: Option<String>,
-    pub shell_integration_available: bool,
-    pub master: Box<dyn MasterPty + Send>,
-    pub writer: Box<dyn Write + Send>,
-    pub child: Box<dyn Child + Send + Sync>,
+    pub shell_integration_installed: bool,
+    pub shell_bootstrap: Option<ShellBootstrap>,
+    pub backend: TerminalBackend,
 }
 
 /// An active or terminated terminal session with dedicated PTY handles.
@@ -33,11 +32,14 @@ pub struct TerminalSession {
     pub rows: u16,
     pub exit_code: Option<i32>,
     pub integration_nonce: Option<String>,
-    pub shell_integration_available: bool,
+    /// Trusted integration was set up for the launched shell (pending its handshake).
+    pub shell_integration_installed: bool,
+    /// Set by the output reader once the authenticated handshake is observed.
+    integration_established: Arc<AtomicBool>,
     pub exit_guard: Arc<AtomicBool>,
-    master: Arc<Mutex<Box<dyn MasterPty + Send>>>,
-    writer: Arc<Mutex<Box<dyn Write + Send>>>,
-    child: Arc<Mutex<Box<dyn Child + Send + Sync>>>,
+    /// Held so an unread single-use bootstrap is removed with the session.
+    _shell_bootstrap: Option<ShellBootstrap>,
+    backend: TerminalBackend,
 }
 
 impl TerminalSession {
@@ -53,16 +55,17 @@ impl TerminalSession {
             rows: params.rows,
             exit_code: None,
             integration_nonce: params.integration_nonce,
-            shell_integration_available: params.shell_integration_available,
+            shell_integration_installed: params.shell_integration_installed,
+            integration_established: Arc::new(AtomicBool::new(false)),
             exit_guard: Arc::new(AtomicBool::new(false)),
-            master: Arc::new(Mutex::new(params.master)),
-            writer: Arc::new(Mutex::new(params.writer)),
-            child: Arc::new(Mutex::new(params.child)),
+            _shell_bootstrap: params.shell_bootstrap,
+            backend: params.backend,
         }
     }
 
     /// Returns a serializable summary of the session.
     pub fn info(&self) -> TerminalSessionInfo {
+        let established = self.integration_established.load(Ordering::SeqCst);
         TerminalSessionInfo {
             session_id: self.session_id.clone(),
             shell: self.shell.clone(),
@@ -73,7 +76,8 @@ impl TerminalSession {
             rows: self.rows,
             exit_code: self.exit_code,
             integration_nonce: self.integration_nonce.clone(),
-            shell_integration_available: self.shell_integration_available,
+            shell_integration_available: self.shell_integration_installed && established,
+            shell_integration_pending: self.shell_integration_installed && !established,
         }
     }
 
@@ -85,14 +89,11 @@ impl TerminalSession {
             ));
         }
 
-        let mut writer = self
-            .writer
-            .lock()
-            .map_err(|e| TerminalError::LockPoisoned(format!("failed to acquire writer lock: {e}")))?;
-
-        writer.write_all(data)?;
-        writer.flush()?;
-        Ok(())
+        if data == [0x03] {
+            self.backend.dispatch_interrupt().map(|_| ())
+        } else {
+            self.backend.write(data)
+        }
     }
 
     /// Resizes the PTY window dimensions.
@@ -101,19 +102,12 @@ impl TerminalSession {
             return Err(TerminalError::InvalidDimensions { cols, rows });
         }
 
-        let master = self
-            .master
-            .lock()
-            .map_err(|e| TerminalError::LockPoisoned(format!("failed to acquire master lock: {e}")))?;
-
-        master
-            .resize(PtySize {
-                rows,
-                cols,
-                pixel_width: 0,
-                pixel_height: 0,
-            })
-            .map_err(|e| TerminalError::PtyError(e.to_string()))?;
+        self.backend.resize(PtySize {
+            rows,
+            cols,
+            pixel_width: 0,
+            pixel_height: 0,
+        })?;
 
         self.cols = cols;
         self.rows = rows;
@@ -122,14 +116,18 @@ impl TerminalSession {
 
     /// Obtains a cloned reader handle for reading PTY output on a background thread.
     pub fn try_clone_reader(&self) -> Result<Box<dyn std::io::Read + Send>> {
-        let master = self
-            .master
-            .lock()
-            .map_err(|e| TerminalError::LockPoisoned(format!("failed to acquire master lock: {e}")))?;
+        self.backend.try_clone_reader()
+    }
 
-        master
-            .try_clone_reader()
-            .map_err(|e| TerminalError::PtyError(e.to_string()))
+    /// Returns a handshake watcher for the output reader, if integration was installed.
+    pub fn integration_handshake(&self) -> Option<IntegrationHandshake> {
+        match (&self.integration_nonce, self.shell_integration_installed) {
+            (Some(nonce), true) => Some(IntegrationHandshake::new(
+                nonce,
+                Arc::clone(&self.integration_established),
+            )),
+            _ => None,
+        }
     }
 
     /// Returns a clone of the one-shot exit guard for this session.
@@ -137,18 +135,16 @@ impl TerminalSession {
         Arc::clone(&self.exit_guard)
     }
 
-    /// Closes the session, terminates the child process, and records the exit status.
+    /// Returns the shared platform lifecycle fact store for reader/wait coordination.
+    pub fn lifecycle(&self) -> TerminalLifecycle {
+        self.backend.lifecycle()
+    }
+
+    /// Requests child teardown; the backend waiter records the authoritative exit status.
     pub fn close(&mut self) -> Result<()> {
         self.status = TerminalSessionStatus::Exited;
 
-        if let Ok(mut child) = self.child.lock() {
-            // Attempt termination; process might already be dead
-            let _ = child.kill();
-            if let Ok(Some(status)) = child.try_wait() {
-                self.exit_code = Some(status.exit_code() as i32);
-            }
-        }
-
+        self.backend.request_teardown();
         Ok(())
     }
 }

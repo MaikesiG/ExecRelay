@@ -451,7 +451,6 @@ console.log('\n--- Test 6: Verify Expand Control Available in Stable Terminal UI
       onCopySelected: () => {},
       onDeleteBlock: () => {},
       onDeleteSelected: () => {},
-      onToggleMonitorFocus: () => {},
       verificationContract: createVerificationContract({
         id: 'c-test',
         workspaceId: 'w-1',
@@ -461,19 +460,12 @@ console.log('\n--- Test 6: Verify Expand Control Available in Stable Terminal UI
     }),
   );
 
-  // Focus mode is a stable Monitor control and no longer depends on private capabilities.
+  // The Focus Mode toggle was removed: it changed no layout (nothing read its state).
   assert.ok(
-    htmlPublic.includes('monitor-focus-toggle-btn'),
-    'Expand control (monitor-focus-toggle-btn) must be rendered in stable Terminal UI',
+    !htmlPublic.includes('monitor-focus-toggle-btn'),
+    'Expand control (monitor-focus-toggle-btn) must not be rendered',
   );
-  assert.ok(
-    htmlPublic.includes('Focus Monitor'),
-    'Focus Monitor tooltip/aria-label must be rendered in stable Terminal UI',
-  );
-  assert.ok(
-    htmlPublic.includes('⤢'),
-    'Expand symbol ⤢ must be rendered in stable Terminal UI',
-  );
+  assert.ok(!htmlPublic.includes('Focus Monitor'), 'Focus Monitor tooltip/aria-label must not be rendered');
 
   // Assert Verify tab is present and aligned
   assert.ok(htmlPublic.includes('Verify'), 'Verify tab is properly rendered');

@@ -2034,6 +2034,21 @@ pre.capture-output--error {
   color: #94a3b8;
 }
 
+.capture-evidence-health {
+  font-size: 9.5px;
+  padding: 0 3px;
+  border-radius: 2px;
+}
+
+.capture-evidence-health--degraded {
+  color: #fbbf77;
+}
+
+.capture-evidence-health--error {
+  color: #f0abfc;
+  background: rgba(217, 70, 239, 0.12);
+}
+
 .transcript-bottom-actions {
   margin-top: auto;
   flex-shrink: 0;
@@ -2993,6 +3008,12 @@ fieldset.capture-target-selector {
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 }
 
+/* Delete Selected confirmation, pinned with the controls directly below the action row. */
+.capture-control-stack .capture-banner-area {
+  padding: 4px 10px 0;
+  margin-bottom: 4px;
+}
+
 .capture-toolbar-top-row {
   display: flex;
   align-items: center;
@@ -3198,23 +3219,6 @@ fieldset.capture-target-selector {
 .capture-view-tab-btn--active .monitor-tab-count-badge {
   background: rgba(255, 255, 255, 0.14);
   color: #e2e8f0;
-}
-
-.monitor-focus-toggle-btn {
-  background: transparent;
-  border: none;
-  color: #8b9bb8;
-  font-size: 13px;
-  cursor: pointer;
-  padding: 2px 5px;
-  border-radius: 3px;
-  margin-left: auto;
-  line-height: 1;
-}
-
-.monitor-focus-toggle-btn:hover {
-  color: #f0f6fc;
-  background: rgba(255, 255, 255, 0.08);
 }
 
 /* ========================================================================== */

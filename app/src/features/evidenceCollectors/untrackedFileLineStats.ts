@@ -16,6 +16,7 @@
  */
 
 import type { CollectorCommandInput, CollectorCommandOutput, RepositoryFileLineStatsSource } from './types';
+import { hostPathPlatform, isPathInside } from '../workspace/pathPolicy';
 
 /** Maximum file size in bytes to inspect for line counting (4 MiB) */
 export const MAX_UNTRACKED_FILE_INSPECTION_BYTES = 4 * 1024 * 1024;
@@ -152,7 +153,7 @@ export async function inspectUntrackedFileLineStats(
       if (
         pathMod &&
         typeof pathMod.resolve === 'function' &&
-        !fullPath.startsWith(resolvedRoot)
+        !isPathInside(resolvedRoot, fullPath, hostPathPlatform())
       ) {
         return {
           status: 'unavailable',

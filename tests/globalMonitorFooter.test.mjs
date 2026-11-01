@@ -7,7 +7,7 @@
  * 3. Consumes canonical EvidenceSelection store
  * 4. Multi-domain / mixed selections from all surfaces co-exist and display accurate combined summary
  * 5. Actions: Clear (clears canonical selection), Copy (deterministic format + floating feedback), Create Prompt (opens modal)
- * 6. Switching views or entering Focus Mode never clears selection
+ * 6. Switching views never clears selection
  * 7. Structural separation:
  *    - MonitorFooter is outside ActiveMonitorView
  *    - Feedback overlay is outside ActiveMonitorView
@@ -168,10 +168,10 @@ console.log('Running Global Monitor Footer Test Suite (HARDEN-011)...\n');
 }
 
 // ---------------------------------------------------------------------------
-// Test Group 3: View Switching and Focus Mode Persistence
+// Test Group 3: View Switching Persistence
 // ---------------------------------------------------------------------------
 {
-  console.log('\n--- Test Group 3: View Switching & Focus Mode Persistence ---');
+  console.log('\n--- Test Group 3: View Switching Persistence ---');
 
   let state = createEvidenceSelectionState();
   state = toggleItemSelection(state, createExecutionSelectionItem({ id: 'e1', command: 'git diff', startedAt: 1 }));
@@ -185,14 +185,7 @@ console.log('Running Global Monitor Footer Test Suite (HARDEN-011)...\n');
     assert.strictEqual(getSelectedCount(state), 2, `Selection survives navigating to ${view}`);
   }
 
-  // Toggling Monitor Focus Mode
-  let isMonitorFocused = false;
-  isMonitorFocused = true;
-  assert.strictEqual(getSelectedCount(state), 2, 'Selection survives entering Focus Mode');
-  isMonitorFocused = false;
-  assert.strictEqual(getSelectedCount(state), 2, 'Selection survives exiting Focus Mode');
-
-  console.log('✓ Selection state strictly preserved across view switching and Focus mode');
+  console.log('✓ Selection state strictly preserved across view switching');
 }
 
 // ---------------------------------------------------------------------------

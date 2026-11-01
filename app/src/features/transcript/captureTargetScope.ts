@@ -99,3 +99,17 @@ export function resolveCaptureTargetPaneIds(
 ): TerminalPaneId[] {
   return resolveCaptureTargetPanes(workspace).map((pane) => pane.id);
 }
+
+/**
+ * Capture targets that are currently listening. Listening state is maintained on
+ * workspace.panes; the panes nested in terminal tabs keep their creation-time copy, so a pane
+ * created during Capture would otherwise stay "listening" forever and Stop could never apply.
+ */
+export function resolveListeningCaptureTargetIds(
+  workspace: LogicalWorkspace,
+): TerminalPaneId[] {
+  const listening = new Set(
+    (workspace.panes ?? []).filter((pane) => pane.capture?.isListening).map((pane) => pane.id),
+  );
+  return resolveCaptureTargetPaneIds(workspace).filter((id) => listening.has(id));
+}

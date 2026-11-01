@@ -27,6 +27,9 @@ import {
 import {
   deriveExecutionLifecycle,
   deriveExecutionOutcome,
+  deriveEvidenceHealth,
+  describeEvidenceHealth,
+  deriveBlockStructuredEvidence,
   formatExecutionDuration,
   formatExecutionTimestamp,
 } from './captureBlockModel';
@@ -39,12 +42,7 @@ import {
   deriveVerificationPresentation,
   deriveVerificationTabIndicator,
 } from '../verification';
-import { executionFromTranscriptBlock } from '../execution';
 import { StructuredEvidenceView } from '../structuredEvidence/StructuredEvidenceView';
-import {
-  parseEngineeringEvidence,
-  buildParseContext,
-} from '../structuredEvidence';
 import {
   RepositoryEvidenceView,
   type RepositoryFileItemData,
@@ -73,7 +71,7 @@ import {
 } from '../evidenceSelection';
 import { runCollectorProcess } from '../evidenceCollectors/collectorRunner';
 import { PromptComposerModal } from '../promptComposer';
-import { type MonitorView, isMacPlatform } from '../shortcuts';
+import { type MonitorView, formatCommandShortcutHint } from '../shortcuts';
 import {
   MonitorGlobalFeedbackRegion,
   createMonitorFeedbackStore,
@@ -137,11 +135,21 @@ export const TranscriptCard = memo(function TranscriptCard({
   const displayOutput = showRaw
     ? normalizeOutput(rawOutput)
     : displayResult.cleanedText;
+  // CAPTURE-NOOUTPUT-STATUS-001: output that is only terminal control sequences (ConPTY
+  // repaints, keypad modes) is "No output", not an error or output body. This affects the
+  // body only; outcome, exit code and evidence health are rendered from the block as usual.
+  const showOutputBody = Boolean(block.output) && (displayResult.hasSubstantiveOutput || showRaw);
 
   const headerLabel = formatBlockLabel(block.sourcePaneOrdinal ?? 1, index + 1);
 
   const lifecycle = useMemo(() => deriveExecutionLifecycle(block), [block]);
   const outcome = useMemo(() => deriveExecutionOutcome(block), [block]);
+  // Evidence health is shown beside, never instead of, the outcome: a command that
+  // exits non-zero reads as failed + exit code, not as an ExecRelay error.
+  const evidenceStatus = useMemo(
+    () => describeEvidenceHealth(deriveEvidenceHealth(block)),
+    [block],
+  );
   const isError =
     outcome === 'failed' ||
     Boolean(block.hasDiagnosticError) ||
@@ -182,14 +190,10 @@ export const TranscriptCard = memo(function TranscriptCard({
     [block.startedAt, block.completedAt],
   );
 
-  const structuredEvidence = useMemo(() => {
-    if (block.structuredEvidence) return block.structuredEvidence;
-    if (!block.output && !block.rawOutput) return [];
-    const exec = executionFromTranscriptBlock(block);
-    return parseEngineeringEvidence(
-      buildParseContext(exec, exec.evidenceBlocks),
-    );
-  }, [block]);
+  const structuredEvidence = useMemo(
+    () => deriveBlockStructuredEvidence(block),
+    [block],
+  );
 
   const handleShowSourceEvidence = useCallback(() => {
     if (isCollapsed) {
@@ -459,7 +463,7 @@ export const TranscriptCard = memo(function TranscriptCard({
             displayResult.hiddenPromptCount || undefined
           }
         >
-          {block.output ? (
+          {showOutputBody ? (
             <div className='capture-output-container'>
               <div className='capture-output-header'>
                 <span
@@ -523,6 +527,20 @@ export const TranscriptCard = memo(function TranscriptCard({
           ) : (
             <span className='transcript-output-empty'>
               {!block.isComplete ? 'Executing command…' : 'No output'}
+              {block.isComplete && rawOutput && (
+                <button
+                  type='button'
+                  className='card-subaction-btn capture-toggle-raw-btn'
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShowRaw(true);
+                  }}
+                  title='Show raw evidence'
+                  aria-label='Show raw evidence'
+                >
+                  <span>Raw</span>
+                </button>
+              )}
             </span>
           )}
         </div>
@@ -580,6 +598,14 @@ export const TranscriptCard = memo(function TranscriptCard({
           >
             {outcomeText}
           </span>
+          {evidenceStatus && (
+            <span
+              className={`capture-evidence-health capture-evidence-health--${evidenceStatus.health}`}
+              title={evidenceStatus.detail}
+            >
+              {evidenceStatus.label}
+            </span>
+          )}
         </div>
       )}
     </div>
@@ -704,6 +730,7 @@ export interface TranscriptCapturePanelProps {
   isVerificationStopping?: boolean;
   isVerificationStopTimeout?: boolean;
   selectedVerificationCriterionIds?: Set<string>;
+  isVerificationTargetDispatchable?: boolean;
   onToggleSelectVerificationCriterion?: (criterionId: string) => void;
   onSelectAllVerificationCriteria?: () => void;
   onClearVerificationCriteriaSelection?: () => void;
@@ -728,10 +755,9 @@ export interface TranscriptCapturePanelProps {
   changeAttributions?: ChangeAttribution[];
   activeView?: MonitorView;
   onViewChange?: (view: MonitorView) => void;
-  isMonitorFocused?: boolean;
-  onToggleMonitorFocus?: () => void;
   workspaceName?: string;
   workspaceRootPath?: string;
+  workspaceRootNotice?: { message: string; path: string } | null;
   repositoryRoot?: string;
   repositoryBranch?: string;
   onOpenFolder?: () => void;
@@ -773,6 +799,7 @@ export const TranscriptCapturePanel = memo(function TranscriptCapturePanel(
     isVerificationStopping,
     isVerificationStopTimeout,
     selectedVerificationCriterionIds,
+    isVerificationTargetDispatchable,
     onToggleSelectVerificationCriterion,
     onSelectAllVerificationCriteria,
     onClearVerificationCriteriaSelection,
@@ -797,17 +824,15 @@ export const TranscriptCapturePanel = memo(function TranscriptCapturePanel(
     changeAttributions,
     activeView,
     onViewChange,
-    isMonitorFocused,
-    onToggleMonitorFocus,
     workspaceName,
     workspaceRootPath,
+    workspaceRootNotice,
     repositoryRoot,
     repositoryBranch,
     onOpenFolder,
   } = props;
 
   const capabilities = useProductCapabilities();
-  const isMac = useMemo(() => isMacPlatform(), []);
   const [internalViewMode, setInternalViewMode] =
     useState<MonitorView>('capture-evidence');
   const [isCaptureDetailsExpanded, setIsCaptureDetailsExpanded] =
@@ -874,6 +899,19 @@ export const TranscriptCapturePanel = memo(function TranscriptCapturePanel(
       });
     }
   }, [feedback, feedbackStore]);
+
+  const triggerRepositoryActionError = useCallback(
+    (message: string) => {
+      feedbackStore.push({
+        level: 'error',
+        source: 'repository',
+        title: message,
+        dedupeKey: 'repository:action-error',
+        durationMs: 5000,
+      });
+    },
+    [feedbackStore],
+  );
 
   const triggerCopyFeedback = useCallback(
     (message: string, dedupeKey?: string) => {
@@ -1278,7 +1316,7 @@ export const TranscriptCapturePanel = memo(function TranscriptCapturePanel(
           aria-selected={activeMonitorView === 'capture-evidence'}
           className={`capture-view-tab-btn ${activeMonitorView === 'capture-evidence' ? 'capture-view-tab-btn--active' : ''}`}
           onClick={() => handleSelectView('capture-evidence')}
-          title={`Capture & Evidence (${isMac ? '⌘2' : 'Ctrl+2'})`}
+          title={`Capture & Evidence${formatCommandShortcutHint('focus-capture-evidence')}`}
         >
           <span className='monitor-tab-label'>Capture</span>
           {captureStatus === 'capturing' && (
@@ -1302,7 +1340,7 @@ export const TranscriptCapturePanel = memo(function TranscriptCapturePanel(
           aria-selected={activeMonitorView === 'changes'}
           className={`capture-view-tab-btn ${activeMonitorView === 'changes' ? 'capture-view-tab-btn--active' : ''}`}
           onClick={() => handleSelectView('changes')}
-          title={`Repository Changes (${isMac ? '⌘3' : 'Ctrl+3'})`}
+          title={`Repository Changes${formatCommandShortcutHint('focus-changes')}`}
         >
           <span className='monitor-tab-label'>Changes</span>
           {repositorySnapshot?.status?.files &&
@@ -1321,7 +1359,7 @@ export const TranscriptCapturePanel = memo(function TranscriptCapturePanel(
           aria-selected={activeMonitorView === 'verification'}
           className={`capture-view-tab-btn ${activeMonitorView === 'verification' ? 'capture-view-tab-btn--active' : ''}`}
           onClick={() => handleSelectView('verification')}
-          title={`${verifyTabIndicator.tooltip} (${isMac ? '⌘4' : 'Ctrl+4'})`}
+          title={`${verifyTabIndicator.tooltip}${formatCommandShortcutHint('focus-verification')}`}
           aria-label={verifyTabIndicator.ariaLabel}
         >
           <span className='monitor-tab-label'>Verify</span>
@@ -1332,22 +1370,6 @@ export const TranscriptCapturePanel = memo(function TranscriptCapturePanel(
             />
           )}
         </button>
-        {onToggleMonitorFocus && (
-          <button
-            type='button'
-            className='monitor-focus-toggle-btn'
-            onClick={onToggleMonitorFocus}
-            title={
-              isMonitorFocused
-                ? `Exit Focus Mode (${isMac ? '⌘1' : 'Ctrl+1'})`
-                : 'Focus Monitor'
-            }
-            aria-label={isMonitorFocused ? 'Exit Focus Mode' : 'Focus Monitor'}
-            aria-pressed={isMonitorFocused}
-          >
-            {isMonitorFocused ? '⤓' : '⤢'}
-          </button>
-        )}
       </div>
 
       {/* Surface 2: Consolidated Capture View */}
@@ -1674,12 +1696,9 @@ export const TranscriptCapturePanel = memo(function TranscriptCapturePanel(
                 </div>
               </div>
             </div>
-          </div>
 
-        {/* SECTION 2: EVIDENCE (CAPTURED EXECUTIONS) */}
-        <section className='evidence-section' aria-label='Captured evidence'>
-
-            {/* Inline Destructive Confirmation Banner (stays local to Evidence deletion; banners support type="success") */}
+            {/* Delete Selected confirmation: directly below the action row, inside the sticky
+                control stack, so it stays in view however far the block list is scrolled. */}
             {isDeleteConfirmActive && (
               <div
                 className='capture-banner-area'
@@ -1697,6 +1716,11 @@ export const TranscriptCapturePanel = memo(function TranscriptCapturePanel(
                 />
               </div>
             )}
+          </div>
+
+        {/* SECTION 2: EVIDENCE (CAPTURED EXECUTIONS) */}
+        <section className='evidence-section' aria-label='Captured evidence'>
+
 
             {/* Empty state combinations (Section 9) or Execution Cards */}
             {blocks.length === 0 ? (
@@ -1764,8 +1788,10 @@ export const TranscriptCapturePanel = memo(function TranscriptCapturePanel(
             onSelectAllFiles={handleSelectAllFiles}
             onClearFileSelection={handleClearFileSelection}
             onCopyFeedback={triggerCopyFeedback}
+            onActionError={triggerRepositoryActionError}
             workspaceName={workspaceName}
             workspaceRootPath={workspaceRootPath}
+            workspaceRootNotice={workspaceRootNotice}
             repositoryRoot={repositoryRoot}
             repositoryBranch={repositoryBranch}
             onOpenFolder={onOpenFolder}
@@ -1789,6 +1815,7 @@ export const TranscriptCapturePanel = memo(function TranscriptCapturePanel(
               isStopTimeout={isTrulyStopTimeout}
               blocks={blocks}
               selectedCriterionIds={selectedVerificationCriterionIds}
+              isTargetDispatchable={isVerificationTargetDispatchable}
               onToggleSelectCriterion={onToggleSelectVerificationCriterion}
               onSelectAllCriteria={onSelectAllVerificationCriteria}
               onClearCriteriaSelection={onClearVerificationCriteriaSelection}

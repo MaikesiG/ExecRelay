@@ -38,9 +38,17 @@ function transpileTs(filePath, customRequire = () => ({})) {
 
 // 1. Transpile types and helper modules
 const ecTypesMod = transpileTs(path.resolve(__dirname, '../app/src/features/evidenceCollectors/types.ts'));
+const shortcutNormalizationMod = transpileTs(
+  path.resolve(__dirname, '../app/src/features/shortcuts/shortcutNormalization.ts'),
+);
+const pathPolicyMod = transpileTs(
+  path.resolve(__dirname, '../app/src/features/workspace/pathPolicy.ts'),
+  () => shortcutNormalizationMod,
+);
 const untrackedStatsMod = transpileTs(
   path.resolve(__dirname, '../app/src/features/evidenceCollectors/untrackedFileLineStats.ts'),
-  (req) => (req.includes('types') ? ecTypesMod : require(req)),
+  (req) =>
+    req === '../workspace/pathPolicy' ? pathPolicyMod : req.includes('types') ? ecTypesMod : require(req),
 );
 const {
   countTextLines,

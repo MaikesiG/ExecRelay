@@ -76,8 +76,8 @@ export const DEFAULT_SHORTCUTS_LINUX: Record<AppCommand, ShortcutBinding> = {
  */
 export function getDefaultShortcuts(
   platformOrIsMac?: ShortcutPlatform | boolean,
-): Record<AppCommand, ShortcutBinding> {
-  let source: Record<AppCommand, ShortcutBinding>;
+): Partial<Record<AppCommand, ShortcutBinding>> {
+  let source: Partial<Record<AppCommand, ShortcutBinding>>;
 
   if (typeof platformOrIsMac === 'boolean') {
     source = platformOrIsMac ? DEFAULT_SHORTCUTS_MAC : DEFAULT_SHORTCUTS_WIN;
@@ -94,7 +94,8 @@ export function getDefaultShortcuts(
         source = DEFAULT_SHORTCUTS_LINUX;
         break;
       default:
-        source = DEFAULT_SHORTCUTS_MAC;
+        // CROSSPLAT-005D: an unknown host gets no application shortcuts rather than macOS ones.
+        source = {};
         break;
     }
   }
@@ -103,5 +104,5 @@ export function getDefaultShortcuts(
   for (const [cmd, binding] of Object.entries(source)) {
     result[cmd as AppCommand] = { ...binding };
   }
-  return result as Record<AppCommand, ShortcutBinding>;
+  return result;
 }

@@ -298,7 +298,8 @@ console.log('Running Local Capture Copy Feedback Banner Tests...\\n');
   assert.ok(panelTsx.includes('handleCardCopy'), 'Wires handleCardCopy to TranscriptCard');
   assert.ok(panelTsx.includes('handleCopySelectedClick'), 'Wires handleCopySelectedClick to toolbar');
   assert.ok(panelTsx.includes('triggerCopyFeedback'), 'Has triggerCopyFeedback timer handling');
-  assert.ok(panelTsx.includes('type="success"'), 'Renders banner with success type');
+  // Copy feedback is raised with success level (the old check matched only a JSX comment).
+  assert.ok(panelTsx.includes("level: 'success'"), 'Raises copy feedback with success level');
 
   const bannerTsx = fs.readFileSync(
     path.resolve(__dirname, '../app/src/features/transcript/CaptureFeedbackBanner.tsx'),

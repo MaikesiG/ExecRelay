@@ -19,4 +19,6 @@ export * from './workspacePersistence';
 export * from './workspaceReorder';
 export * from './terminalTabName';
 export * from './DerivedSurfaceErrorBoundary';
+export * from './appVersion';
+export * from './workspaceCreationGuard';
 import './ChromeTabs.css';

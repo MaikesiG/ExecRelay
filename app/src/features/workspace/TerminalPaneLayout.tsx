@@ -22,6 +22,11 @@ import {
 import { TranscriptCapturePanel } from '../transcript/TranscriptCapturePanel';
 import './TerminalPaneLayout.css';
 
+// Every terminal tab of every workspace keeps a mounted Capture side panel, but only the
+// visible tab's panel renders the active workspace's blocks. Mounting them in every panel
+// made WebKit lay out the same large output once per tab (FAILED-EXECUTION-FREEZE-001).
+const NO_BLOCKS: PanelLayoutTranscriptProps['blocks'] = [];
+
 export interface TerminalPaneLayoutProps {
   workspaceId: LogicalWorkspaceId;
   tab: TerminalTab;
@@ -246,7 +251,6 @@ export function TerminalPaneLayout({
         ref={workspaceBodyRef}
         className="terminal-workspace-body"
         data-capture-open={isCaptureOpen ? 'true' : 'false'}
-        data-monitor-focused={transcriptProps.isMonitorFocused ? 'true' : undefined}
         style={{
           ['--capture-panel-width' as string]: `${currentCaptureWidth}px`,
         }}
@@ -298,7 +302,7 @@ export function TerminalPaneLayout({
           >
             <TranscriptCapturePanel
               isListening={transcriptProps.isListening}
-              blocks={transcriptProps.blocks}
+              blocks={isTabActive ? transcriptProps.blocks : NO_BLOCKS}
               currentBatchId={transcriptProps.currentBatchId}
               currentBatchBlockCount={transcriptProps.currentBatchBlockCount}
               selectedBlockIds={transcriptProps.selectedBlockIds}
@@ -343,6 +347,7 @@ export function TerminalPaneLayout({
               isVerificationStopping={transcriptProps.isVerificationStopping}
               isVerificationStopTimeout={transcriptProps.isVerificationStopTimeout}
               selectedVerificationCriterionIds={transcriptProps.selectedVerificationCriterionIds}
+              isVerificationTargetDispatchable={transcriptProps.isVerificationTargetDispatchable}
               onToggleSelectVerificationCriterion={transcriptProps.onToggleSelectVerificationCriterion}
               onSelectAllVerificationCriteria={transcriptProps.onSelectAllVerificationCriteria}
               onClearVerificationCriteriaSelection={transcriptProps.onClearVerificationCriteriaSelection}
@@ -365,10 +370,9 @@ export function TerminalPaneLayout({
               changeAttributions={transcriptProps.changeAttributions}
               activeView={transcriptProps.activeMonitorView}
               onViewChange={transcriptProps.onSelectMonitorView}
-              isMonitorFocused={transcriptProps.isMonitorFocused}
-              onToggleMonitorFocus={transcriptProps.onToggleMonitorFocus}
               workspaceName={transcriptProps.workspaceName}
               workspaceRootPath={transcriptProps.workspaceRootPath}
+              workspaceRootNotice={transcriptProps.workspaceRootNotice}
               repositoryRoot={transcriptProps.repositoryRoot}
               repositoryBranch={transcriptProps.repositoryBranch}
               onOpenFolder={transcriptProps.onOpenFolder}

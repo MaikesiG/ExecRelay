@@ -39,7 +39,7 @@ assert.match(
 );
 assert.match(
   tabsCss,
-  /\.workspace-tab-status-dot--capturing,[\s\S]*?background:\s*var\(--red\);/,
+  /\.workspace-tab-status-dot--capturing,[\s\S]*?background:\s*var\(--accent\);/,
 );
 assert.match(
   tabsCss,

@@ -9,6 +9,8 @@
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { terminalApi } from './terminalApi';
+import { isTerminalPasteShortcut, resolveTerminalCopyShortcut } from './terminalCopyShortcut';
+import { detectPlatform } from '../shortcuts/shortcutNormalization';
 import {
   containsAnsiClearSequence,
   scrollTerminalToFreshScreen,
@@ -36,6 +38,7 @@ export interface CreateTerminalRuntimeOptions {
   cwd?: string;
   initialCols?: number;
   initialRows?: number;
+  autoStartSession?: boolean;
   onStatusChange?: (
     status: TerminalSessionStatus,
     info: TerminalSessionInfo | null,
@@ -52,6 +55,23 @@ export interface CreateTerminalRuntimeOptions {
     status: TerminalSessionStatus,
     message: string | null,
   ) => void;
+}
+
+/**
+ * Human-readable text for a rejected terminal IPC call. Native `TerminalError` crosses IPC as
+ * `{ kind, message }` (serde tag/content), not as an `Error`, so `String(err)` renders
+ * `[object Object]`. `invalidDirectory` carries only the path, so it gets the native prefix.
+ */
+export function describeTerminalError(err: unknown): string {
+  if (err instanceof Error && err.message) return err.message;
+  if (typeof err === 'string' && err) return err;
+  if (err && typeof err === 'object') {
+    const { kind, message } = err as { kind?: unknown; message?: unknown };
+    if (typeof message === 'string' && message) {
+      return kind === 'invalidDirectory' ? `invalid working directory: ${message}` : message;
+    }
+  }
+  return 'unknown error';
 }
 
 export class TerminalRuntime {
@@ -84,6 +104,7 @@ export class TerminalRuntime {
   private lastHostSize: { width: number; height: number } | null = null;
   public pendingClearScroll: boolean = false;
   public isDisposed: boolean = false;
+  public isAwaitingExplicitStart: boolean = false;
 
   private unlistenOutput: (() => void) | null = null;
   private unlistenExit: (() => void) | null = null;
@@ -190,33 +211,35 @@ export class TerminalRuntime {
       },
     );
 
-    // Custom keyboard shortcuts: Cmd+Shift+C / Ctrl+Shift+C (copy) and Cmd+K (clear scrollback)
+    // Custom keyboard shortcuts: copy the selection (TERMINAL-CLIPBOARD-001) and Cmd+K (clear scrollback)
     this.terminal.attachCustomKeyEventHandler((event: KeyboardEvent) => {
       if (event.type !== 'keydown') {
         return true;
       }
 
-      const isMac =
-        typeof navigator !== 'undefined' &&
-        /Mac|iPod|iPhone|iPad/.test(navigator.userAgent);
-      const isCopyShortcut =
-        event.code === 'KeyC' &&
-        event.shiftKey &&
-        (isMac ? event.metaKey : event.ctrlKey);
+      const platform = detectPlatform();
+      const isMac = platform === 'macos';
+      // Not handled by xterm and not prevented: the WebView's native paste runs instead.
+      if (isTerminalPasteShortcut(event, platform)) return false;
+      const copy = resolveTerminalCopyShortcut(event, platform, this.terminal.hasSelection());
 
-      if (isCopyShortcut) {
+      if (copy !== 'pass') {
+        // xterm does not cancel an event the handler rejects; the native copy must not run too.
+        event.preventDefault();
         const selection = this.terminal.getSelection();
-        if (selection && selection.length > 0) {
-          if (typeof navigator !== 'undefined' && navigator.clipboard) {
-            navigator.clipboard.writeText(selection).catch((err) => {
-              const msg =
-                err instanceof Error ? err.message : 'Clipboard copy failed';
-              this.errorMessage = `Copy shortcut failed: ${msg}`;
-              this.onStatusChange?.(this.status, this.sessionInfo, this.errorMessage);
-            });
-          }
-          return false;
+        if (copy === 'copy-and-clear') this.terminal.clearSelection();
+        const reportCopyFailure = (msg: string) => {
+          this.errorMessage = `Copy shortcut failed: ${msg}`;
+          this.onStatusChange?.(this.status, this.sessionInfo, this.errorMessage);
+        };
+        if (typeof navigator !== 'undefined' && navigator.clipboard) {
+          navigator.clipboard.writeText(selection).catch((err) => {
+            reportCopyFailure(err instanceof Error ? err.message : 'Clipboard copy failed');
+          });
+        } else {
+          reportCopyFailure('Clipboard is unavailable');
         }
+        return false;
       }
 
       const isClearShortcut =
@@ -237,6 +260,12 @@ export class TerminalRuntime {
 
     // onData -> stdin
     this.dataDisposable = this.terminal.onData((data: string) => {
+      if (this.isAwaitingExplicitStart || this.status === 'exited') {
+        // CTRL-C-001 / EXECRELAY-V020-RC-BLOCKER-001: when a pane is inert (restored) or its
+        // shell exited, input has nowhere to go; pressing Enter explicitly starts a fresh shell.
+        if (data.includes('\r')) this.restartSession();
+        return;
+      }
       try {
         this.onTerminalInput?.(data);
       } catch (err) {
@@ -288,8 +317,16 @@ export class TerminalRuntime {
     initialCols = initialCols ?? 80;
     initialRows = initialRows ?? 24;
 
-    // Start native session setup with exact dimensions
-    this.initPromise = this.setupSession(initialCols, initialRows);
+    if (options.autoStartSession === false) {
+      this.isAwaitingExplicitStart = true;
+      this.initPromise = Promise.resolve(null);
+      this.terminal.write(
+        '\x1b[2m[Restored terminal tab — press Enter to start a new shell]\x1b[0m\r\n',
+      );
+    } else {
+      // Start native session setup with exact dimensions
+      this.initPromise = this.setupSession(initialCols, initialRows);
+    }
   }
 
   public updateStatus(
@@ -312,6 +349,43 @@ export class TerminalRuntime {
     if ((newStatus === 'exited' || newStatus === 'error') && previousStatus !== newStatus) {
       this.onSessionEnded?.(newStatus, err);
     }
+  }
+
+  /**
+   * CTRL-C-001: the shell process ended (for example `exit` or `set -e` in the interactive
+   * shell). Says so in the terminal, since later input can no longer reach a process, and
+   * offers Enter to start a new shell in this pane.
+   */
+  public markShellExited(
+    exitCode: number | null | undefined,
+    info: TerminalSessionInfo | null = null,
+  ): void {
+    if (this.isDisposed || this.status === 'exited') return;
+    const code = typeof exitCode === 'number' ? ` with code ${exitCode}` : '';
+    this.terminal.write(
+      `\r\n\x1b[2m[Shell exited${code} — press Enter to start a new shell]\x1b[0m\r\n`,
+    );
+    this.updateStatus('exited', info, null);
+  }
+
+  /** CTRL-C-001 / EXECRELAY-V020-RC-BLOCKER-001: starts a fresh shell session in an exited or restored inert pane. */
+  public restartSession(): void {
+    if (this.isDisposed || (this.status !== 'exited' && !this.isAwaitingExplicitStart)) return;
+    this.isAwaitingExplicitStart = false;
+    const previousSessionId = this.sessionId;
+    if (previousSessionId) {
+      this.registry?.unbindSession(previousSessionId);
+      terminalApi.closeSession({ sessionId: previousSessionId }).catch(() => {});
+    }
+    for (const unlisten of [this.unlistenOutput, this.unlistenExit, this.unlistenError]) {
+      unlisten?.();
+    }
+    this.unlistenOutput = null;
+    this.unlistenExit = null;
+    this.unlistenError = null;
+    this.sessionId = null;
+    this.shellParser.reset();
+    this.initPromise = this.setupSession(this.terminal.cols, this.terminal.rows);
   }
 
   public handleOutputBytes(data: number[]): void {
@@ -432,7 +506,7 @@ export class TerminalRuntime {
           if (this.isDisposed) return;
           if (this.sessionId !== null) {
             if (event.sessionId === this.sessionId) {
-              this.updateStatus('exited', null, null);
+              this.markShellExited(event.exitCode);
             }
           } else {
             earlyExitEvents.set(event.sessionId, event);
@@ -512,9 +586,12 @@ export class TerminalRuntime {
       const createdId = sessionInfo.sessionId;
       this.sessionId = createdId;
       this.sessionInfo = sessionInfo;
-      this.shellLifecycleState = sessionInfo.shellIntegrationAvailable
-        ? 'initializing'
-        : 'fallback';
+      // Pending integration awaits its authenticated handshake; the first trusted
+      // marker moves the runtime to 'trusted'.
+      this.shellLifecycleState =
+        sessionInfo.shellIntegrationAvailable || sessionInfo.shellIntegrationPending
+          ? 'initializing'
+          : 'fallback';
       this.onDimensionsChange?.(cols, rows);
 
       if (this.registry) {
@@ -534,7 +611,7 @@ export class TerminalRuntime {
 
         const earlyExit = earlyExitEvents.get(createdId);
         if (earlyExit) {
-          this.updateStatus('exited', sessionInfo, null);
+          this.markShellExited(earlyExit.exitCode, sessionInfo);
         } else {
           this.updateStatus('running', sessionInfo, null);
         }
@@ -557,8 +634,7 @@ export class TerminalRuntime {
         this.registry.clearPendingSession(this.sessionId);
       }
       if (!this.isDisposed) {
-        const msg = err instanceof Error ? err.message : String(err);
-        this.updateStatus('error', null, `Failed to initialize session: ${msg}`);
+        this.updateStatus('error', null, `Failed to initialize session: ${describeTerminalError(err)}`);
       }
       return null;
     }
@@ -842,7 +918,7 @@ export class TerminalRuntimeRegistry {
         exitUnlisten = await terminalApi.onExit((event) => {
           const runtime = this.runtimesBySessionId.get(event.sessionId);
           if (runtime && !runtime.isDisposed) {
-            runtime.updateStatus('exited', null, null);
+            runtime.markShellExited(event.exitCode);
           } else if (this.isSessionPendingOrCreating(event.sessionId)) {
             this.earlyExitEvents.set(event.sessionId, event);
           }
@@ -919,7 +995,7 @@ export class TerminalRuntimeRegistry {
     }
     const exitEv = this.earlyExitEvents.get(sessionId);
     if (exitEv) {
-      runtime.updateStatus('exited', runtime.sessionInfo, null);
+      runtime.markShellExited(exitEv.exitCode, runtime.sessionInfo);
       this.earlyExitEvents.delete(sessionId);
     }
   }

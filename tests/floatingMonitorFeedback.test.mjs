@@ -5,7 +5,7 @@
  * 1. Feedback region is styled as a floating overlay above the Monitor (position: absolute)
  * 2. Does not consume permanent vertical layout space
  * 3. Copy feedback, repository refresh, and operational errors flow through MonitorFeedbackStore
- * 4. Feedback remains visible across stable surfaces 2–4 and survives Monitor Focus mode
+ * 4. Feedback remains visible across stable surfaces 2–4
  * 5. Semantic variants (success, info, warning, error) use the unified card architecture
  * 6. Obsolete local copy banners are eliminated
  */
@@ -125,10 +125,10 @@ console.log('Running Floating Monitor Feedback Test Suite (HARDEN-011)...\n');
 }
 
 // ---------------------------------------------------------------------------
-// Test Group 3: View Switching and Focus Mode Independence
+// Test Group 3: View Switching Independence
 // ---------------------------------------------------------------------------
 {
-  console.log('\n--- Test Group 3: View Switching & Focus Mode Independence ---');
+  console.log('\n--- Test Group 3: View Switching Independence ---');
 
   const store = createMonitorFeedbackStore();
 
@@ -142,14 +142,8 @@ console.log('Running Floating Monitor Feedback Test Suite (HARDEN-011)...\n');
     assert.strictEqual(current[0].title, 'Copied 14 changed paths');
   }
 
-  // Simulate entering Focus Mode (isMonitorFocused = true) and exiting
-  let isMonitorFocused = true;
-  assert.strictEqual(store.getItems().length, 1, 'Feedback persists in Focus mode');
-  isMonitorFocused = false;
-  assert.strictEqual(store.getItems().length, 1, 'Feedback persists after exiting Focus mode');
-
   store.destroy();
-  console.log('✓ Feedback remains visible across all Monitor views and Focus mode');
+  console.log('✓ Feedback remains visible across all Monitor views');
 }
 
 // ---------------------------------------------------------------------------

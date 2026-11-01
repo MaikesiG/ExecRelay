@@ -41,7 +41,7 @@ ExecRelay enforces explicit boundaries between what was reported and what actual
 
 ## Local-First
 
-ExecRelay Terminal v0.1 is built local-first:
+ExecRelay Terminal v0.2 is built local-first:
 
 - **No account required:** Download, install, and run without signing up or connecting to an external cloud service.
 - **Independent terminal runtime:** Designed to keep normal terminal operation independent from telemetry features. The terminal survives even when ExecRelay telemetry fails.
@@ -51,12 +51,12 @@ ExecRelay Terminal v0.1 is built local-first:
 
 ## Download
 
-ExecRelay Terminal v0.1 currently targets macOS.
+ExecRelay Terminal v0.2.0 is publicly released with evidence-qualified packages for macOS, Windows, and Linux.
 
 - **Public Download Page:** [Download Page](https://maikesig.github.io/ExecRelay/download.html)
 - **GitHub Releases:** [Releases](https://github.com/MaikesiG/ExecRelay/releases)
 
-ExecRelay v0.1.2 is prepared for release on macOS (Apple Silicon, arm64). The Developer ID-signed, Apple-notarized DMG and its SHA-256 checksum will be published on GitHub Releases.
+ExecRelay v0.2.0 is released. macOS Apple Silicon (arm64) is validated with Developer ID signing, notarization, Gatekeeper acceptance, runtime validation, and v0.1.2 → v0.2.0 upgrade validation. Windows x64 and ARM64 packages are build-tested, and Linux x64 packages are build- and container-tested. See the GitHub Release for current platform limitations and SHA-256 checksums.
 
 ---
 
@@ -129,7 +129,7 @@ PTY / process / filesystem / repository
 
 ## Status
 
-ExecRelay Terminal v0.1.2
+ExecRelay Terminal v0.2.0
 
 Current public scope:
 - **Terminal:** PTY management, split panes, and shell integration.

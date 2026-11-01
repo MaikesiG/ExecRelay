@@ -45,6 +45,7 @@ import type { WorkspaceVerificationState } from '../verification/verificationSta
 import type { VerificationContract, VerificationRun } from '../verification/types';
 import type { MonitorView } from '../shortcuts/types';
 import type { TranscriptBlock } from '../transcript/types';
+import { hostPathPlatform, isLocalPath, type PathPlatform } from './pathPolicy';
 
 export const WORKSPACE_PERSISTENCE_STORAGE_KEY = 'execrelay:workspace-state:v1';
 export const LEGACY_WORKSPACE_PERSISTENCE_STORAGE_KEY = 'tracerelay:workspace-state:v1';
@@ -307,6 +308,7 @@ export function serializeWorkspaceState(
           sourcePaneAccentId: b.sourcePaneAccentId,
           cwd: b.cwd,
           exitCode: b.exitCode ?? null,
+          evidenceIssues: b.evidenceIssues,
           lifecycle: b.lifecycle ?? (b.isComplete ? 'finished' : 'running'),
           outcome: b.outcome ?? 'unknown',
           completionSource: b.completionSource,
@@ -361,7 +363,10 @@ export function serializeWorkspaceState(
     return {
       id: ws.id,
       name: ws.name,
-      rootPath: ws.rootPath && ws.rootPath.trim().length > 0 ? ws.rootPath.trim() : null,
+      rootPath:
+        ws.rootPath && ws.rootPath.trim().length > 0
+          ? ws.rootPath.trim()
+          : (ws.unavailableRootPath ?? null),
       activeTerminalTabId: ws.activeTerminalTabId,
       terminalTabs: tabs,
       capture,
@@ -533,7 +538,10 @@ export interface WorkspaceStateRecoveryResult {
  * Guarantees resilience against malformed, partial, stale, cyclic, or corrupted state.
  * Returns non-sensitive diagnostic tags for observed recovery issues.
  */
-export function deserializeWorkspaceStateWithDiagnostics(raw: unknown): WorkspaceStateRecoveryResult {
+export function deserializeWorkspaceStateWithDiagnostics(
+  raw: unknown,
+  hostPlatform: PathPlatform = hostPathPlatform(),
+): WorkspaceStateRecoveryResult {
   const diagnostics: string[] = [];
 
   if (!raw || typeof raw !== 'object') {
@@ -585,10 +593,15 @@ export function deserializeWorkspaceStateWithDiagnostics(raw: unknown): Workspac
         typeof wsObj.name === 'string' && wsObj.name.trim().length > 0
           ? wsObj.name.trim()
           : 'Workspace';
-      const rootPath =
+      const persistedRootPath =
         typeof wsObj.rootPath === 'string' && wsObj.rootPath.trim().length > 0
           ? wsObj.rootPath.trim()
           : undefined;
+      // CROSSPLAT-005A: only a local absolute path becomes the root (and so the cwd and
+      // repository-detection input); any other root is kept aside verbatim.
+      const rootPath = isLocalPath(persistedRootPath, hostPlatform) ? persistedRootPath : undefined;
+      const unavailableRootPath = rootPath ? undefined : persistedRootPath;
+      if (unavailableRootPath) diagnostics.push('unavailable-root-path');
 
       const rawCapture =
         wsObj.capture && typeof wsObj.capture === 'object'
@@ -710,11 +723,13 @@ export function deserializeWorkspaceStateWithDiagnostics(raw: unknown): Workspac
             paneObj.customTitle.trim().length > 0
               ? paneObj.customTitle.trim()
               : null;
-          const lastKnownCwd =
+          const persistedCwd =
             typeof paneObj.lastKnownCwd === 'string' &&
             paneObj.lastKnownCwd.trim().length > 0
               ? paneObj.lastKnownCwd.trim()
               : null;
+          // CROSSPLAT-005A: a non-local cwd must not override the workspace root.
+          const lastKnownCwd = isLocalPath(persistedCwd, hostPlatform) ? persistedCwd : null;
 
           const hasBlocksForThisPane = hydratedBlocks.some(
             (b) => b.terminalPaneId === paneId || b.sourcePaneId === paneId,
@@ -725,6 +740,7 @@ export function deserializeWorkspaceStateWithDiagnostics(raw: unknown): Workspac
             terminalTabId: tabId,
             stableOrdinal,
             accentId,
+            restoredFromPersistence: true,
             customTitle,
             lastKnownCwd,
             session: {
@@ -756,6 +772,7 @@ export function deserializeWorkspaceStateWithDiagnostics(raw: unknown): Workspac
             terminalTabId: tabId,
             stableOrdinal: 1,
             accentId: 'blue',
+            restoredFromPersistence: true,
             customTitle: null,
             lastKnownCwd: null,
             session: { sessionId: null, status: 'starting', sessionInfo: null },
@@ -871,6 +888,7 @@ export function deserializeWorkspaceStateWithDiagnostics(raw: unknown): Workspac
           terminalTabId: fallbackTabId,
           stableOrdinal: 1,
           accentId: 'blue',
+          restoredFromPersistence: true,
           customTitle: null,
           lastKnownCwd: null,
           session: { sessionId: null, status: 'starting', sessionInfo: null },
@@ -1076,6 +1094,7 @@ export function deserializeWorkspaceStateWithDiagnostics(raw: unknown): Workspac
         id,
         name,
         rootPath,
+        ...(unavailableRootPath ? { unavailableRootPath } : {}),
         projectCwd: rootPath,
         repository: undefined,
         terminalTabs: tabs,
@@ -1159,8 +1178,11 @@ export function deserializeWorkspaceStateWithDiagnostics(raw: unknown): Workspac
  * Validates and hydrates a serialized state document into fresh runtime workspace objects.
  * Spawns NO live processes; creates clean initial PTY configurations and reconciled verification states.
  */
-export function deserializeWorkspaceState(raw: unknown): HydratedWorkspaceState | null {
-  return deserializeWorkspaceStateWithDiagnostics(raw).state;
+export function deserializeWorkspaceState(
+  raw: unknown,
+  hostPlatform: PathPlatform = hostPathPlatform(),
+): HydratedWorkspaceState | null {
+  return deserializeWorkspaceStateWithDiagnostics(raw, hostPlatform).state;
 }
 
 
@@ -1212,17 +1234,20 @@ export function loadPersistedWorkspaceState(): HydratedWorkspaceState | null {
   }
 }
 
-/**
- * Persists current workspace state atomically and boundedly.
- */
-export function savePersistedWorkspaceState(state: {
+export interface PersistedWorkspaceSnapshot {
   workspaces: LogicalWorkspace[];
   activeWorkspaceId: LogicalWorkspaceId;
   activeMonitorView?: MonitorView;
-}): void {
+}
+
+/**
+ * Persists current workspace state atomically and boundedly.
+ * Returns whether the state was written; failures are logged, never thrown.
+ */
+export function savePersistedWorkspaceState(state: PersistedWorkspaceSnapshot): boolean {
   try {
     const storage = getStorage();
-    if (!storage) return;
+    if (!storage) return false;
 
     const serialized = serializeWorkspaceState(
       state.workspaces,
@@ -1230,9 +1255,62 @@ export function savePersistedWorkspaceState(state: {
       state.activeMonitorView,
     );
     storage.setItem(WORKSPACE_PERSISTENCE_STORAGE_KEY, JSON.stringify(serialized));
+    return true;
   } catch (err) {
     console.warn('[WorkspacePersistence] Failed to write workspace state:', err);
+    return false;
   }
+}
+
+export interface WorkspacePersistenceCoordinator {
+  /** Records `snapshot` as the latest state; it is written at most `delayMs` later. */
+  request(snapshot: PersistedWorkspaceSnapshot): void;
+  /** Writes the pending snapshot now, if there is one. */
+  flush(): void;
+}
+
+/**
+ * STATE-PERSISTENCE-SCALE-001: single owner of full-state writes. Requests inside one window
+ * coalesce into one write of the latest snapshot; later requests do not extend the window, so
+ * streaming output is written at a bounded cadence rather than once per update. A snapshot
+ * whose inputs are reference-identical to the last successful write is skipped without
+ * serializing.
+ */
+export function createWorkspacePersistenceCoordinator(
+  delayMs: number,
+  save: (snapshot: PersistedWorkspaceSnapshot) => boolean = savePersistedWorkspaceState,
+): WorkspacePersistenceCoordinator {
+  let pending: PersistedWorkspaceSnapshot | null = null;
+  let written: PersistedWorkspaceSnapshot | null = null;
+  let timer: ReturnType<typeof setTimeout> | null = null;
+
+  const flush = () => {
+    if (timer !== null) {
+      clearTimeout(timer);
+      timer = null;
+    }
+    const snapshot = pending;
+    pending = null;
+    if (!snapshot || (written && isSameSnapshot(written, snapshot))) return;
+    if (save(snapshot)) written = snapshot;
+  };
+
+  return {
+    request(snapshot) {
+      pending = snapshot;
+      if (timer === null) timer = setTimeout(flush, delayMs);
+    },
+    flush,
+  };
+}
+
+function isSameSnapshot(a: PersistedWorkspaceSnapshot, b: PersistedWorkspaceSnapshot): boolean {
+  return (
+    a.activeWorkspaceId === b.activeWorkspaceId &&
+    a.activeMonitorView === b.activeMonitorView &&
+    a.workspaces.length === b.workspaces.length &&
+    a.workspaces.every((ws, i) => ws === b.workspaces[i])
+  );
 }
 
 /**

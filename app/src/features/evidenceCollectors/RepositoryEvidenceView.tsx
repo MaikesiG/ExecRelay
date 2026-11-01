@@ -24,6 +24,7 @@ import {
 } from '../evidenceSelection';
 import { copyToClipboard } from '../transcript/transcriptFormat';
 import { openInFinder } from '../workspace/workspaceContext';
+import { isMacPlatform } from '../shortcuts/shortcutNormalization';
 import { getRepositoryFileStatusPresentation } from './fileStatusPresentation';
 import './RepositoryEvidenceView.css';
 
@@ -49,9 +50,13 @@ export interface RepositoryEvidenceViewProps {
   onSelectAllFiles?: (files: RepositoryFileItemData[]) => void;
   onClearFileSelection?: () => void;
   onCopyFeedback?: (message: string) => void;
+  /** Reports a failed desktop action (for example, the file manager could not open). */
+  onActionError?: (message: string) => void;
   runner?: (input: CollectorCommandInput) => Promise<CollectorCommandOutput>;
   workspaceName?: string;
   workspaceRootPath?: string;
+  /** CROSSPLAT-005C: why the workspace root cannot be used right now, with the original path. */
+  workspaceRootNotice?: { message: string; path: string } | null;
   repositoryRoot?: string;
   repositoryBranch?: string;
   onOpenFolder?: () => void;
@@ -67,9 +72,11 @@ export const RepositoryEvidenceView = memo(function RepositoryEvidenceView({
   onSelectAllFiles,
   onClearFileSelection,
   onCopyFeedback,
+  onActionError,
   runner,
   workspaceName,
   workspaceRootPath,
+  workspaceRootNotice,
   repositoryRoot,
   repositoryBranch,
   onOpenFolder,
@@ -323,10 +330,18 @@ export const RepositoryEvidenceView = memo(function RepositoryEvidenceView({
     onCopyFeedback?.(`Copied commit ${shortHead}`);
   }, [shortHead, onCopyFeedback]);
 
+  const fileManagerName = isMacPlatform() ? 'Finder' : 'File Manager';
+
   const handleOpenInFinder = useCallback(async () => {
     if (!effectiveRepoRoot) return;
-    await openInFinder(effectiveRepoRoot);
-  }, [effectiveRepoRoot]);
+    try {
+      await openInFinder(effectiveRepoRoot);
+    } catch (err) {
+      onActionError?.(
+        `Could not open ${fileManagerName}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  }, [effectiveRepoRoot, fileManagerName, onActionError]);
 
   return (
     <div
@@ -385,8 +400,8 @@ export const RepositoryEvidenceView = memo(function RepositoryEvidenceView({
                 className="compact-icon-btn repository-open-finder-btn"
                 onClick={handleOpenInFinder}
                 disabled={!effectiveRepoRoot}
-                title={`Open in Finder\n${effectiveRepoRoot}`}
-                aria-label={`Open in Finder: ${effectiveRepoRoot}`}
+                title={`Open in ${fileManagerName}\n${effectiveRepoRoot}`}
+                aria-label={`Open in ${fileManagerName}: ${effectiveRepoRoot}`}
               >
                 <svg
                   width="14"
@@ -710,6 +725,13 @@ export const RepositoryEvidenceView = memo(function RepositoryEvidenceView({
         </div>
       )}
 
+      {workspaceRootNotice && (
+        <div className="repository-no-git-state" data-testid="repository-root-unavailable">
+          <p className="repository-no-git-title">{workspaceRootNotice.message}</p>
+          <p className="repository-no-git-meta">Workspace folder: {workspaceRootNotice.path}</p>
+        </div>
+      )}
+
       {/* Unbound workspace state (Section 7) */}
       {!workspaceRootPath && (
         <div className="repository-unbound-state" data-testid="repository-unbound">
@@ -727,7 +749,7 @@ export const RepositoryEvidenceView = memo(function RepositoryEvidenceView({
       )}
 
       {/* Bound non-Git workspace state (Section 5) */}
-      {workspaceRootPath && !effectiveRepoRoot && (
+      {workspaceRootPath && !effectiveRepoRoot && !workspaceRootNotice && (
         <div className="repository-no-git-state" data-testid="repository-no-git">
           <p className="repository-no-git-title">No Git repository detected.</p>
           <p className="repository-no-git-meta">Workspace folder: {workspaceRootPath}</p>

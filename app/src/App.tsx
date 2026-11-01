@@ -9,18 +9,18 @@ import {
   isTerminalClearCommand,
   copyToClipboard,
 } from './features/transcript/transcriptFormat';
-import { detectErrorFromOutput } from './features/transcript/captureBlockModel';
+import {
+  attachDerivedEvidence,
+  detectErrorFromOutput,
+} from './features/transcript/captureBlockModel';
 import {
   createEvidenceBlock,
-  evidenceBlocksFromTranscriptBlock,
   executionFromTranscriptBlock,
+  withEvidenceIssue,
   DEFAULT_LOCAL_HUMAN_ACTOR,
 } from './features/execution';
 import {
-  parseEngineeringEvidence,
-  buildParseContext,
-} from './features/structuredEvidence';
-import {
+  collectPreVerificationSnapshot,
   collectRepositoryEvidence,
   type RepositorySnapshot,
 } from './features/evidenceCollectors';
@@ -42,6 +42,7 @@ import {
   getActiveVerificationRun,
   reconcileWorkspaceVerificationState,
   reconcileVerificationTeardown,
+  resolveFallbackExecutionIdentity,
   appendVerificationRunToWorkspace,
   updateVerificationRunInWorkspace,
   setActiveVerificationContractInWorkspace,
@@ -53,6 +54,7 @@ import {
   deleteCriterionFromContractInWorkspace,
   reorderCriteriaInContractInWorkspace,
   getCanonicalVerificationSelection,
+  isVerificationTargetDispatchable,
   toggleCriterionSelectionInWorkspace,
   selectAllCriteriaInWorkspace,
   clearCriteriaSelectionInWorkspace,
@@ -105,6 +107,10 @@ import {
   createPaneCaptureRuntime,
   cleanupPaneCaptureRuntime,
   getPaneCaptureRuntimeKey,
+  acquireVerificationCaptureLease,
+  deferUserCaptureStatus,
+  getUserCaptureStatus,
+  releaseVerificationCaptureLease,
   splitPaneInWorkspaces,
   closePaneInWorkspaces,
   renameTerminalPaneInWorkspaces,
@@ -116,6 +122,8 @@ import {
   getNextUnusedStableOrdinal,
   WorkspaceTabs,
   WorkspaceTabBar,
+  useAppVersion,
+  runExclusive,
   WorkspaceDeleteModal,
   WorkspaceResetModal,
   resetWorkspaceState,
@@ -143,9 +151,10 @@ import {
   bindWorkspaceRootPath,
   resolveWindowTitle,
   updateWindowTitle,
+  onAppExitRequested,
   type RepositoryContext,
   loadPersistedWorkspaceState,
-  savePersistedWorkspaceState,
+  createWorkspacePersistenceCoordinator,
   reorderWorkspaces,
   reorderTerminalTabs,
   type WorkspaceDropPlacement,
@@ -157,6 +166,13 @@ import {
   selectAdjacentTerminalTab,
 } from './features/workspace';
 import {
+  deriveWorkspaceRootState,
+  describeWorkspaceRootState,
+  evaluateWorkspaceRoot,
+  isDirectory,
+} from './features/workspace/workspaceRootState';
+import { hostPathPlatform } from './features/workspace/pathPolicy';
+import {
   reconcileSelectedBlockIds,
   selectAllBlockIds,
   synchronizeBlockSelection,
@@ -166,6 +182,7 @@ import {
   getCaptureTargetScope,
   normalizeCaptureTargetScope,
   resolveCaptureTargetPanes,
+  resolveListeningCaptureTargetIds,
   toggleCaptureTargetPane,
 } from './features/transcript/captureTargetScope';
 import {
@@ -193,9 +210,34 @@ import {
 const MAX_RETAINED_SNAPSHOTS = 20;
 const MAX_RETAINED_ATTRIBUTIONS = 50;
 
+/**
+ * Ends the active verification run's runtime and returns its pane to the user's Capture state
+ * (releasing the run's observation lease). Used on every verification end path.
+ */
+function endVerificationRuntime(
+  verificationRuntimeRef: {
+    current: {
+      workspaceId: string;
+      terminalTabId: string;
+      terminalPaneId: string;
+      runId: string;
+    } | null;
+  },
+  paneCaptureRuntimes: Map<string, PaneCaptureRuntime>,
+): void {
+  const runtime = verificationRuntimeRef.current;
+  verificationRuntimeRef.current = null;
+  if (!runtime) return;
+  const paneRuntime = paneCaptureRuntimes.get(
+    getPaneCaptureRuntimeKey(runtime.workspaceId, runtime.terminalTabId, runtime.terminalPaneId),
+  );
+  if (paneRuntime) releaseVerificationCaptureLease(paneRuntime, runtime.runId);
+}
+
 function App() {
   // WORKSPACE-PERSISTENCE-001 (B1, B2, B13): Hydrate persisted state on startup
   const [persistedSnapshot] = useState(() => loadPersistedWorkspaceState());
+  const appVersion = useAppVersion();
 
   // Domain Model: Top-level workspaces array and active workspace pointer
   // HARDEN-012C: App reload / startup verification reconciliation
@@ -268,89 +310,77 @@ function App() {
   });
   const [activeMonitorView, setActiveMonitorView] =
     useState<MonitorView>(() => persistedSnapshot?.activeMonitorView ?? 'capture-evidence');
-  const [isMonitorFocused, setIsMonitorFocused] = useState<boolean>(false);
   const [isShortcutSettingsOpen, setIsShortcutSettingsOpen] =
     useState<boolean>(false);
   const [isShortcutRecorderActive, setIsShortcutRecorderActive] =
     useState<boolean>(false);
   const lastActiveTerminalPaneIdRef = useRef<string | null>(null);
 
+  // CROSSPLAT-005C: lifecycle-boundary root check (restore, terminal start). One directory stat
+  // for a local root; repository detection only once it is usable. Foreign / unsupported roots
+  // touch neither. The result is applied only if the root is still the one that was checked.
+  const refreshWorkspaceRoot = useCallback((workspaceId: LogicalWorkspaceId) => {
+    const ws = workspacesRef.current.find((w) => w.id === workspaceId);
+    if (!ws) return;
+    void evaluateWorkspaceRoot(ws, hostPathPlatform(), {
+      isDirectory,
+      detectRepository: detectRepositoryContext,
+    }).then(({ state, repository }) => {
+      if (state.kind !== 'local-and-usable' && state.kind !== 'local-supported-but-unreachable') return;
+      const rootReachable = state.kind === 'local-and-usable';
+      setWorkspaces((prev) =>
+        prev.map((w) =>
+          w.id === workspaceId &&
+          w.rootPath === ws.rootPath &&
+          (w.rootReachable !== rootReachable || (repository && !w.repository))
+            ? { ...w, rootReachable, repository: w.repository ?? repository }
+            : w,
+        ),
+      );
+    });
+  }, []);
+
   // WORKSPACE-PERSISTENCE-001 (B4): Re-detect repository context on startup from rootPath
   useEffect(() => {
-    workspaces.forEach((ws) => {
-      if (ws.rootPath && ws.rootPath.trim().length > 0) {
-        detectRepositoryContext(ws.rootPath)
-          .then((detectedRepo) => {
-            if (detectedRepo) {
-              setWorkspaces((prev) =>
-                prev.map((w) =>
-                  w.id === ws.id
-                    ? {
-                        ...w,
-                        repository: detectedRepo,
-                      }
-                    : w,
-                ),
-              );
-            }
-          })
-          .catch(() => {
-            // Safe fallback: non-git / missing folder does not crash (B10, B11)
-          });
-      }
-    });
+    workspaces.forEach((ws) => refreshWorkspaceRoot(ws.id));
     // Run once on initial startup mount
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // WORKSPACE-PERSISTENCE-001 (B14, B17): Debounced persistence auto-save
-  const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // WORKSPACE-PERSISTENCE-001 (B14, B17) / STATE-PERSISTENCE-SCALE-001: every committed change
+  // requests a coalesced write (at most one per 400 ms window). Durability boundaries (Execution
+  // finalization, destructive actions) set flushPersistenceOnCommitRef so their committed state
+  // is written right after it renders.
+  const [persistence] = useState(() => createWorkspacePersistenceCoordinator(400));
+  const flushPersistenceOnCommitRef = useRef(false);
 
   useEffect(() => {
-    if (saveTimeoutRef.current) {
-      clearTimeout(saveTimeoutRef.current);
+    persistence.request({ workspaces, activeWorkspaceId, activeMonitorView });
+    if (flushPersistenceOnCommitRef.current) {
+      flushPersistenceOnCommitRef.current = false;
+      persistence.flush();
     }
-    saveTimeoutRef.current = setTimeout(() => {
-      savePersistedWorkspaceState({
-        workspaces,
-        activeWorkspaceId,
-        activeMonitorView,
-      });
-      saveTimeoutRef.current = null;
-    }, 400);
+  }, [persistence, workspaces, activeWorkspaceId, activeMonitorView]);
 
-    return () => {
-      if (saveTimeoutRef.current) {
-        clearTimeout(saveTimeoutRef.current);
-        saveTimeoutRef.current = null;
-        // Synchronous final flush of the latest logical persisted snapshot during teardown (HISTORY-024C)
-        savePersistedWorkspaceState({
-          workspaces: workspacesRef.current,
-          activeWorkspaceId: activeWorkspaceIdRef.current,
-          activeMonitorView,
-        });
-      }
-    };
-  }, [workspaces, activeWorkspaceId, activeMonitorView]);
-
-  // Immediate save on page/window unload
+  // Write pending state on page/window unload and on teardown (HISTORY-024C). A graceful app
+  // quit fires none of these page events, so the native side also asks for a flush before it
+  // exits (STATE-PERSISTENCE-SCALE-001).
   useEffect(() => {
-    const handleUnload = () => {
-      savePersistedWorkspaceState({
-        workspaces: workspacesRef.current,
-        activeWorkspaceId: activeWorkspaceIdRef.current,
-        activeMonitorView,
-      });
-    };
+    const flush = () => persistence.flush();
     if (typeof window !== 'undefined') {
-      window.addEventListener('beforeunload', handleUnload);
-      window.addEventListener('pagehide', handleUnload);
-      return () => {
-        window.removeEventListener('beforeunload', handleUnload);
-        window.removeEventListener('pagehide', handleUnload);
-      };
+      window.addEventListener('beforeunload', flush);
+      window.addEventListener('pagehide', flush);
     }
-  }, [activeMonitorView]);
+    const stopExitListener = onAppExitRequested(flush);
+    return () => {
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('beforeunload', flush);
+        window.removeEventListener('pagehide', flush);
+      }
+      stopExitListener();
+      flush();
+    };
+  }, [persistence]);
 
   const ensureCapturePanelOpen = useCallback(() => {
     const ws = workspacesRef.current.find(
@@ -407,9 +437,6 @@ function App() {
           break;
         }
         case 'focus-terminal': {
-          if (isMonitorFocused) {
-            setIsMonitorFocused(false);
-          }
           const ws = workspacesRef.current.find(
             (w) => w.id === activeWorkspaceIdRef.current,
           );
@@ -963,12 +990,13 @@ interface CreateWorkspaceOptions {
       ).find(
         (candidate) =>
           candidate.workspaceId === workspace.id &&
-          (candidate.status === 'capturing' || candidate.status === 'paused'),
+          (getUserCaptureStatus(candidate) === 'capturing' ||
+            getUserCaptureStatus(candidate) === 'paused'),
       );
       if (!existingRuntime || !workspace.capture.currentBatch) return pane;
 
       const captureSessionId = `cs-${pane.id}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-      runtime.status = existingRuntime.status;
+      runtime.status = getUserCaptureStatus(existingRuntime);
       runtime.captureGroupId =
         existingRuntime.captureGroupId ??
         `cg-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
@@ -979,7 +1007,7 @@ interface CreateWorkspaceOptions {
         ...pane,
         capture: {
           ...pane.capture,
-          isListening: existingRuntime.status === 'capturing',
+          isListening: getUserCaptureStatus(existingRuntime) === 'capturing',
           hasRetainedData: true,
           currentBatchId: workspace.capture.currentBatch.id,
           sessionId: captureSessionId,
@@ -1099,7 +1127,11 @@ interface CreateWorkspaceOptions {
       const tab = ws.terminalTabs.find((t) => t.id === terminalTabId);
       if (!tab || !tab.panes.some((p) => p.id === paneId)) return;
 
-      const targetPane = tab.panes.find((p) => p.id === paneId);
+      // Capture state is kept on the workspace's pane list (Start/Pause/Stop update it);
+      // the tab's pane copy can be stale (WORKSPACE-STATUS-001).
+      const targetPane =
+        ws.panes.find((p) => p.id === paneId) ??
+        tab.panes.find((p) => p.id === paneId);
       const targetIsListening = targetPane?.capture.isListening ?? false;
 
       setWorkspaces((prev) => {
@@ -1160,7 +1192,7 @@ interface CreateWorkspaceOptions {
           });
           updateWorkspace(workspaceId, () => updatedWs);
         }
-        verificationRuntimeRef.current = null;
+        endVerificationRuntime(verificationRuntimeRef, paneCaptureRuntimesRef.current);
         setIsVerificationStopping(false);
         setIsVerificationStopTimeout(false);
         showTranscriptFeedback('Verification stopped: terminal pane was closed', 'error');
@@ -1295,7 +1327,8 @@ interface CreateWorkspaceOptions {
       // 3. Safely close modal if Capture is no longer active.
       if (
         !runtime ||
-        (runtime.status !== 'capturing' && runtime.status !== 'paused')
+        (getUserCaptureStatus(runtime) !== 'capturing' &&
+          getUserCaptureStatus(runtime) !== 'paused')
       ) {
         setPendingCloseCapturedPane(null);
         closePane(workspaceId, terminalTabId, paneId);
@@ -1331,6 +1364,7 @@ interface CreateWorkspaceOptions {
       runtime.captureSessionId = null;
       runtime.captureGroupId = null;
       runtime.status = 'idle';
+      runtime.verificationLease = null;
 
       // 7. Clear only target pane/session Capture warning state.
       if (previousSessionId) {
@@ -1365,7 +1399,7 @@ interface CreateWorkspaceOptions {
           });
           updateWorkspace(workspaceId, () => updatedWs);
         }
-        verificationRuntimeRef.current = null;
+        endVerificationRuntime(verificationRuntimeRef, paneCaptureRuntimesRef.current);
         setIsVerificationStopping(false);
         setIsVerificationStopTimeout(false);
         showTranscriptFeedback('Verification stopped: terminal pane was closed', 'error');
@@ -1684,7 +1718,7 @@ interface CreateWorkspaceOptions {
         if (verificationRuntimeRef.current.stopFallbackTimer) {
           clearTimeout(verificationRuntimeRef.current.stopFallbackTimer);
         }
-        verificationRuntimeRef.current = null;
+        endVerificationRuntime(verificationRuntimeRef, paneCaptureRuntimesRef.current);
         setIsVerificationStopping(false);
         setIsVerificationStopTimeout(false);
       }
@@ -1843,6 +1877,7 @@ interface CreateWorkspaceOptions {
           runtime.inputBuffer = '';
           runtime.pendingExecutionInput = null;
           runtime.status = 'idle';
+          runtime.verificationLease = null;
           runtime.captureSessionId = null;
           runtime.captureGroupId = null;
           runtime.currentBatch = null;
@@ -2019,7 +2054,7 @@ interface CreateWorkspaceOptions {
           targetTabId: tabId,
           reason: 'Terminal tab was closed during verification',
         });
-        verificationRuntimeRef.current = null;
+        endVerificationRuntime(verificationRuntimeRef, paneCaptureRuntimesRef.current);
         setIsVerificationStopping(false);
         setIsVerificationStopTimeout(false);
         updateWorkspace(ws.id, () => updatedWs);
@@ -2151,8 +2186,9 @@ interface CreateWorkspaceOptions {
           cancelPendingFlush(workspaceId, pane.terminalTabId, paneId);
           runtime.captureGroupId = captureGroupId;
           runtime.captureSessionId = captureSessionId;
-          runtime.status = 'capturing';
           runtime.currentBatch = newBatch;
+          if (deferUserCaptureStatus(runtime, 'capturing')) continue;
+          runtime.status = 'capturing';
           runtime.activeBlockId = null;
           runtime.activeBlockParser = null;
           runtime.inputBuffer = '';
@@ -2251,7 +2287,7 @@ interface CreateWorkspaceOptions {
         .map((p) => findPaneCaptureRuntime(workspaceId, p.terminalTabId, p.id))
         .filter(
           (r): r is PaneCaptureRuntime =>
-            r !== null && r.status === 'capturing',
+            r !== null && getUserCaptureStatus(r) === 'capturing',
         );
 
       if (activeGroupRuntimes.length === 0) return;
@@ -2260,6 +2296,7 @@ interface CreateWorkspaceOptions {
       const now = Date.now();
 
       for (const r of activeGroupRuntimes) {
+        if (deferUserCaptureStatus(r, 'paused')) continue;
         cancelPendingFlush(workspaceId, r.terminalTabId, r.paneId);
         if (r.activeBlockId && r.activeBlockParser) {
           const out = splitPromptTail(r.activeBlockParser.buffer).substantiveOutput;
@@ -2351,12 +2388,13 @@ interface CreateWorkspaceOptions {
         .map((p) => findPaneCaptureRuntime(workspaceId, p.terminalTabId, p.id))
         .filter(
           (r): r is PaneCaptureRuntime =>
-            r !== null && r.status === 'paused',
+            r !== null && getUserCaptureStatus(r) === 'paused',
         );
 
       if (pausedRuntimes.length === 0) return;
 
       for (const r of pausedRuntimes) {
+        if (deferUserCaptureStatus(r, 'capturing')) continue;
         r.status = 'capturing';
         r.activeBlockId = null;
         r.activeBlockParser = null;
@@ -2425,13 +2463,15 @@ interface CreateWorkspaceOptions {
         .map((p) => findPaneCaptureRuntime(workspaceId, p.terminalTabId, p.id))
         .filter(
           (r): r is PaneCaptureRuntime =>
-            r !== null && (r.status === 'capturing' || r.status === 'paused'),
+            r !== null &&
+            (getUserCaptureStatus(r) === 'capturing' || getUserCaptureStatus(r) === 'paused'),
         );
 
       const finalizedMap = new Map<string, string | undefined>();
       const now = Date.now();
 
       for (const r of activeGroupRuntimes) {
+        if (deferUserCaptureStatus(r, 'idle')) continue;
         cancelPendingFlush(workspaceId, r.terminalTabId, r.paneId);
         if (r.activeBlockId && r.activeBlockParser) {
           const out = splitPromptTail(r.activeBlockParser.buffer).substantiveOutput;
@@ -2550,9 +2590,9 @@ interface CreateWorkspaceOptions {
           findPaneCaptureRuntime(workspaceId, pane.terminalTabId, pane.id),
         )
         .filter((runtime): runtime is PaneCaptureRuntime => runtime !== null);
-      const status = targetRuntimes.some((runtime) => runtime.status === 'capturing')
+      const status = targetRuntimes.some((runtime) => getUserCaptureStatus(runtime) === 'capturing')
         ? 'capturing'
-        : targetRuntimes.some((runtime) => runtime.status === 'paused')
+        : targetRuntimes.some((runtime) => getUserCaptureStatus(runtime) === 'paused')
           ? 'paused'
           : 'ready';
 
@@ -2589,7 +2629,8 @@ interface CreateWorkspaceOptions {
           pane.terminalTabId,
           pane.id,
         );
-        return runtime?.status === 'capturing' || runtime?.status === 'paused';
+        const userStatus = runtime && getUserCaptureStatus(runtime);
+        return userStatus === 'capturing' || userStatus === 'paused';
       });
       if (status) {
         return;
@@ -2659,7 +2700,8 @@ interface CreateWorkspaceOptions {
           pane.terminalTabId,
           pane.id,
         );
-        return runtime?.status === 'capturing' || runtime?.status === 'paused';
+        const userStatus = runtime && getUserCaptureStatus(runtime);
+        return userStatus === 'capturing' || userStatus === 'paused';
       });
       if (status) {
         return;
@@ -2725,13 +2767,15 @@ interface CreateWorkspaceOptions {
       const nextCaptureSessionId = `capture-${workspaceId}-${tabId}-${paneId}-${nextBatchId}`;
 
       const runtime = getOrCreatePaneCaptureRuntime(workspaceId, tabId, paneId);
-      if (runtime) {
+      if (runtime && !deferUserCaptureStatus(runtime, 'capturing')) {
         cancelPendingFlush(workspaceId, tabId, paneId);
         runtime.activeBlockId = null;
         runtime.activeBlockParser = null;
         runtime.inputBuffer = '';
         runtime.pendingExecutionInput = null;
         runtime.status = 'capturing';
+      }
+      if (runtime) {
         runtime.captureSessionId = nextCaptureSessionId;
         runtime.currentBatch = newBatch;
       }
@@ -3123,6 +3167,8 @@ interface CreateWorkspaceOptions {
       data: string,
       options?: PendingExecutionInput & {
         trustedBoundary?: boolean;
+        /** Command-start cwd from an authenticated shell marker. */
+        trustedCwd?: string;
       },
     ) => {
       const ws = workspacesRef.current.find((w) => w.id === workspaceId);
@@ -3228,7 +3274,11 @@ interface CreateWorkspaceOptions {
                   executionId: prevActiveId,
                   actorId: DEFAULT_LOCAL_HUMAN_ACTOR.id,
                   executionSource: 'terminal',
-                  intent: 'interactive',
+                  ...resolveFallbackExecutionIdentity(
+                    verificationRuntimeRef.current,
+                    workspaceId,
+                    prevActiveId,
+                  ),
                   workspaceId,
                   terminalTabId,
                   terminalPaneId,
@@ -3249,13 +3299,7 @@ interface CreateWorkspaceOptions {
                 hasDiagnosticError: errCheck.isError,
                 hasError: outcome === 'failed' || errCheck.isError,
               };
-              const eb = evidenceBlocksFromTranscriptBlock(updated);
-              updated.evidenceBlocks = eb;
-              updated.evidenceBlockIds = eb.map((x) => x.id);
-              const exec = executionFromTranscriptBlock(updated);
-              const se = parseEngineeringEvidence(buildParseContext(exec, eb));
-              updated.structuredEvidence = se.length > 0 ? se : undefined;
-              exec.structuredEvidence = updated.structuredEvidence;
+              attachDerivedEvidence(updated);
 
               updateWorkspace(workspaceId, (prev) => {
                 const updatedBlocks = prev.capture.blocks.map((b) => {
@@ -3347,6 +3391,9 @@ interface CreateWorkspaceOptions {
               sourcePaneAccentId: targetPane?.accentId ?? 'blue',
               captureSessionId: runtime.captureSessionId ?? undefined,
               captureGroupId: runtime.captureGroupId ?? undefined,
+              cwd: physicalOptions?.trustedBoundary
+                ? physicalOptions.trustedCwd
+                : undefined,
             };
 
             runtime.activeBlockId = blockId;
@@ -3354,6 +3401,7 @@ interface CreateWorkspaceOptions {
               command: cleanCommand,
               buffer: '',
               echoChecked: false,
+              cwd: newBlock.cwd,
             };
             runtime.sanitizer?.reset();
 
@@ -3392,7 +3440,11 @@ interface CreateWorkspaceOptions {
                   executionId: prevActiveId,
                   actorId: DEFAULT_LOCAL_HUMAN_ACTOR.id,
                   executionSource: 'terminal',
-                  intent: 'interactive',
+                  ...resolveFallbackExecutionIdentity(
+                    verificationRuntimeRef.current,
+                    workspaceId,
+                    prevActiveId,
+                  ),
                   workspaceId,
                   terminalTabId,
                   terminalPaneId,
@@ -3413,14 +3465,7 @@ interface CreateWorkspaceOptions {
                 hasDiagnosticError: errCheck.isError,
                 hasError: outcome === 'failed' || errCheck.isError,
               };
-              const eb = evidenceBlocksFromTranscriptBlock(blockToFinalize);
-              blockToFinalize.evidenceBlocks = eb;
-              blockToFinalize.evidenceBlockIds = eb.map((x) => x.id);
-              const exec = executionFromTranscriptBlock(blockToFinalize);
-              const se = parseEngineeringEvidence(buildParseContext(exec, eb));
-              blockToFinalize.structuredEvidence =
-                se.length > 0 ? se : undefined;
-              exec.structuredEvidence = blockToFinalize.structuredEvidence;
+              attachDerivedEvidence(blockToFinalize);
               prevFinalizedBlock = blockToFinalize;
             }
 
@@ -3472,12 +3517,7 @@ interface CreateWorkspaceOptions {
               };
             });
 
-            // Immediate persistence on command execution transition (HISTORY-024C)
-            savePersistedWorkspaceState({
-              workspaces: workspacesRef.current,
-              activeWorkspaceId: activeWorkspaceIdRef.current,
-              activeMonitorView,
-            });
+            // Command start persists through the coalesced write (STATE-PERSISTENCE-SCALE-001)
 
             if (
               prevFinalizedBlock &&
@@ -3539,7 +3579,7 @@ interface CreateWorkspaceOptions {
         }
       }
     },
-    [cancelPendingFlush, updateWorkspace, activeMonitorView],
+    [cancelPendingFlush, updateWorkspace],
   );
 
   const handleTerminalOutput = useCallback(
@@ -3653,6 +3693,7 @@ interface CreateWorkspaceOptions {
                   {
                     ...reconciliation.pendingInput,
                     trustedBoundary: true,
+                    trustedCwd: ev.cwd,
                   },
                 );
               }
@@ -3661,6 +3702,9 @@ interface CreateWorkspaceOptions {
             if (runtime.activeBlockId) {
               const activeId = runtime.activeBlockId;
               const isTrusted = ev.trust === 'trusted';
+              // Only the authenticated ExecRelay hook can report its own failure; an
+              // untrusted marker claiming one is ignored like any other untrusted field.
+              const hookFailed = isTrusted && Boolean(ev.hookError);
               updateWorkspace(workspaceId, (prev) => {
                 const updated = prev.capture.blocks.map((b) =>
                   b.id === activeId
@@ -3671,6 +3715,12 @@ interface CreateWorkspaceOptions {
                         shellIntegrationLevel: (isTrusted
                           ? 'rich'
                           : b.shellIntegrationLevel ?? 'basic') as ShellIntegrationLevel,
+                        ...(hookFailed && {
+                          evidenceIssues: withEvidenceIssue(
+                            b.evidenceIssues,
+                            'shell-integration-failed',
+                          ),
+                        }),
                       }
                     : b,
                 );
@@ -3732,12 +3782,17 @@ interface CreateWorkspaceOptions {
                     batchId: runtime.currentBatch?.id ?? 1,
                     command: activeParser.command,
                     rawCommand: activeParser.command,
+                    cwd: activeParser.cwd,
                     startedAt: now,
                     type: 'command',
                     executionId: activeId,
                     actorId: DEFAULT_LOCAL_HUMAN_ACTOR.id,
                     executionSource: 'terminal',
-                    intent: 'interactive',
+                    ...resolveFallbackExecutionIdentity(
+                      verificationRuntimeRef.current,
+                      workspaceId,
+                      activeId,
+                    ),
                     workspaceId,
                     terminalTabId,
                     terminalPaneId,
@@ -3760,14 +3815,7 @@ interface CreateWorkspaceOptions {
                   hasError: outcome === 'failed' || errCheck.isError,
                 };
 
-                const eb = evidenceBlocksFromTranscriptBlock(finalizedBlock);
-                finalizedBlock.evidenceBlocks = eb;
-                finalizedBlock.evidenceBlockIds = eb.map((x) => x.id);
-                const exec = executionFromTranscriptBlock(finalizedBlock);
-                const se = parseEngineeringEvidence(buildParseContext(exec, eb));
-                finalizedBlock.structuredEvidence =
-                  se.length > 0 ? se : undefined;
-                exec.structuredEvidence = finalizedBlock.structuredEvidence;
+                attachDerivedEvidence(finalizedBlock);
 
                 updateWorkspace(workspaceId, (prev) => {
                   const updatedBlocks = prev.capture.blocks.map((b) => {
@@ -3790,12 +3838,8 @@ interface CreateWorkspaceOptions {
                 runtime.activeBlockParser = null;
                 runtime.sanitizer?.reset();
 
-                // Immediate persistence on command completion (HISTORY-024C)
-                savePersistedWorkspaceState({
-                  workspaces: workspacesRef.current,
-                  activeWorkspaceId: activeWorkspaceIdRef.current,
-                  activeMonitorView,
-                });
+                // Execution finalization is a durability boundary (HISTORY-024C)
+                flushPersistenceOnCommitRef.current = true;
 
                 if (
                   finalizedBlock.intent === 'verification' ||
@@ -3834,7 +3878,7 @@ interface CreateWorkspaceOptions {
       console.warn('[Capture] Terminal output handling failed safely:', err);
     }
   },
-  [cancelPendingFlush, handleTerminalInput, updateWorkspace, activeMonitorView],
+  [cancelPendingFlush, handleTerminalInput, updateWorkspace],
 );
 
   const handleStatusChange = useCallback(
@@ -3875,6 +3919,7 @@ interface CreateWorkspaceOptions {
           p.id === terminalPaneId
             ? {
                 ...p,
+                restoredFromPersistence: false,
                 terminalSessionId:
                   info?.sessionId ?? p.terminalSessionId ?? p.session.sessionId,
                 lastKnownCwd: info?.cwd ?? p.lastKnownCwd ?? null,
@@ -3895,6 +3940,7 @@ interface CreateWorkspaceOptions {
                     p.id === terminalPaneId
                       ? {
                           ...p,
+                          restoredFromPersistence: false,
                           terminalSessionId:
                             info?.sessionId ??
                             p.terminalSessionId ??
@@ -3912,6 +3958,7 @@ interface CreateWorkspaceOptions {
                   p.id === terminalPaneId
                     ? {
                         ...p,
+                        restoredFromPersistence: false,
                         terminalSessionId:
                           info?.sessionId ??
                           p.terminalSessionId ??
@@ -3944,8 +3991,12 @@ interface CreateWorkspaceOptions {
             : t,
         ),
       }));
+
+      // CROSSPLAT-005C: a terminal start (or failed start) re-checks the root, so a share that
+      // came back makes the same workspace usable again, and one that left is marked unreachable.
+      if (status === 'running' || status === 'error') refreshWorkspaceRoot(workspaceId);
     },
-    [handleTerminalInput, updateWorkspace],
+    [handleTerminalInput, refreshWorkspaceRoot, updateWorkspace],
   );
 
   const handleSessionEnded = useCallback(
@@ -3997,7 +4048,11 @@ interface CreateWorkspaceOptions {
             executionId: activeId,
             actorId: DEFAULT_LOCAL_HUMAN_ACTOR.id,
             executionSource: 'terminal',
-            intent: 'interactive',
+            ...resolveFallbackExecutionIdentity(
+              verificationRuntimeRef.current,
+              workspaceId,
+              activeId,
+            ),
             workspaceId,
             terminalTabId,
             terminalPaneId,
@@ -4015,13 +4070,7 @@ interface CreateWorkspaceOptions {
           hasDiagnosticError: errCheck.isError,
           hasError: outcome === 'failed' || errCheck.isError,
         };
-        const eb = evidenceBlocksFromTranscriptBlock(updatedBlock);
-        updatedBlock.evidenceBlocks = eb;
-        updatedBlock.evidenceBlockIds = eb.map((x) => x.id);
-        const exec = executionFromTranscriptBlock(updatedBlock);
-        const se = parseEngineeringEvidence(buildParseContext(exec, eb));
-        updatedBlock.structuredEvidence = se.length > 0 ? se : undefined;
-        exec.structuredEvidence = updatedBlock.structuredEvidence;
+        attachDerivedEvidence(updatedBlock);
 
         updateWorkspace(workspaceId, (prev) => {
           const updated = prev.capture.blocks.map((b) => {
@@ -4064,7 +4113,7 @@ interface CreateWorkspaceOptions {
           targetPaneId: terminalPaneId,
           reason: 'Terminal session exited before verification completion',
         });
-        verificationRuntimeRef.current = null;
+        endVerificationRuntime(verificationRuntimeRef, paneCaptureRuntimesRef.current);
         setIsVerificationStopping(false);
         setIsVerificationStopTimeout(false);
         updateWorkspace(workspaceId, () => updatedWs);
@@ -4089,10 +4138,6 @@ interface CreateWorkspaceOptions {
       if (transcriptFeedbackTimeoutRef.current !== null) {
         window.clearTimeout(transcriptFeedbackTimeoutRef.current);
         transcriptFeedbackTimeoutRef.current = null;
-      }
-      if (saveTimeoutRef.current !== null) {
-        window.clearTimeout(saveTimeoutRef.current);
-        saveTimeoutRef.current = null;
       }
       terminalRuntimeRegistry.disposeAll();
     };
@@ -4134,16 +4179,14 @@ interface CreateWorkspaceOptions {
     ? resolveCaptureTargetPanes(activeWorkspace)
     : [];
   const activeCaptureTargetIds = activeCaptureTargetPanes.map((pane) => pane.id);
-  const aggregateCaptureStatus = activeCaptureTargetPanes.some(
-    (pane) => pane.capture.isListening,
-  )
+  const listeningCapturePaneCount = activeWorkspace
+    ? resolveListeningCaptureTargetIds(activeWorkspace).length
+    : 0;
+  const aggregateCaptureStatus = listeningCapturePaneCount > 0
     ? 'capturing'
     : activeCapturePanel?.groupStatus === 'paused'
       ? 'paused'
       : activeCapturePanel?.groupStatus ?? 'ready';
-  const listeningCapturePaneCount = activeCaptureTargetPanes.filter(
-    (pane) => pane.capture.isListening,
-  ).length;
 
   const isTargetSelectorLocked =
     aggregateCaptureStatus === 'capturing' || aggregateCaptureStatus === 'paused';
@@ -4366,7 +4409,7 @@ interface CreateWorkspaceOptions {
             criterionResults: finalResults,
             completedAt: Date.now(),
           };
-          verificationRuntimeRef.current = null;
+          endVerificationRuntime(verificationRuntimeRef, paneCaptureRuntimesRef.current);
           setIsVerificationStopping(false);
           setIsVerificationStopTimeout(false);
           const next = prev.map((w) =>
@@ -4414,7 +4457,7 @@ interface CreateWorkspaceOptions {
             criterionResults: updatedResults,
             completedAt: Date.now(),
           };
-          verificationRuntimeRef.current = null;
+          endVerificationRuntime(verificationRuntimeRef, paneCaptureRuntimesRef.current);
           setIsVerificationStopping(false);
           setIsVerificationStopTimeout(false);
           const next = prev.map((w) =>
@@ -4589,7 +4632,8 @@ interface CreateWorkspaceOptions {
           return next;
         });
 
-        // 8. Ensure pane capture runtime is capturing
+        // 8. Lease pane observation for this run (released with the run, restoring the
+        //    user's Capture state)
         const runtimeKey = getPaneCaptureRuntimeKey(workspaceId, terminalTabId, terminalPaneId);
         let paneRuntime = paneCaptureRuntimesRef.current.get(runtimeKey);
         if (!paneRuntime) {
@@ -4597,16 +4641,12 @@ interface CreateWorkspaceOptions {
             getOrCreatePaneCaptureRuntime(workspaceId, terminalTabId, terminalPaneId) ??
             undefined;
         }
-        if (paneRuntime && paneRuntime.status !== 'capturing') {
-          if (!paneRuntime.currentBatch) {
-            const nextBatchId = (ws?.capture.batchCounter ?? 0) + 1;
-            paneRuntime.currentBatch = {
-              id: nextBatchId,
-              startedAt: Date.now(),
-              stoppedAt: null,
-            };
-          }
-          paneRuntime.status = 'capturing';
+        if (paneRuntime) {
+          acquireVerificationCaptureLease(paneRuntime, runId, () => ({
+            id: (ws?.capture.batchCounter ?? 0) + 1,
+            startedAt: Date.now(),
+            stoppedAt: null,
+          }));
         }
 
         // 9. Create and register execution block BEFORE writing to PTY
@@ -4827,7 +4867,7 @@ interface CreateWorkspaceOptions {
           completedAt: Date.now(),
         };
 
-        verificationRuntimeRef.current = null;
+        endVerificationRuntime(verificationRuntimeRef, paneCaptureRuntimesRef.current);
         setWorkspaces((prev) =>
           prev.map((w) =>
             w.id === ws.id ? updateVerificationRunInWorkspace(w, cancelledRun) : w,
@@ -4865,7 +4905,7 @@ interface CreateWorkspaceOptions {
           completedAt: Date.now(),
         };
         inFlightVerificationRunIdRef.current = null;
-        verificationRuntimeRef.current = null;
+        endVerificationRuntime(verificationRuntimeRef, paneCaptureRuntimesRef.current);
         setIsVerificationStopping(false);
         setIsVerificationStopTimeout(false);
         setWorkspaces((prev) =>
@@ -4919,7 +4959,7 @@ interface CreateWorkspaceOptions {
         const targetPaneId = runtime.terminalPaneId;
 
         inFlightVerificationRunIdRef.current = null;
-        verificationRuntimeRef.current = null;
+        endVerificationRuntime(verificationRuntimeRef, paneCaptureRuntimesRef.current);
         setIsVerificationStopping(false);
         setIsVerificationStopTimeout(false);
 
@@ -4949,6 +4989,8 @@ interface CreateWorkspaceOptions {
         const cwd = activePane?.session.sessionInfo?.cwd ?? undefined;
 
         (async () => {
+          // Like the before-snapshot: without a session cwd, Git would run in the process cwd.
+          if (!cwd) return;
           try {
             const pendingAttr = createPendingAttribution({
               workspaceId: targetWsId,
@@ -5009,7 +5051,7 @@ interface CreateWorkspaceOptions {
       console.error('[VerificationRuntime] handleVerificationExecutionCompleted exception:', err);
       const runtime = verificationRuntimeRef.current;
       if (runtime) {
-        verificationRuntimeRef.current = null;
+        endVerificationRuntime(verificationRuntimeRef, paneCaptureRuntimesRef.current);
         setIsVerificationStopping(false);
         setIsVerificationStopTimeout(false);
         updateWorkspace(runtime.workspaceId, (prev) => {
@@ -5130,11 +5172,12 @@ interface CreateWorkspaceOptions {
       (async () => {
         let beforeSnapshot: RepositorySnapshot | null = null;
         try {
-          const res = await collectRepositoryEvidence({
+          const res = await collectPreVerificationSnapshot({
             workspaceId: wsId,
+            targetSessionId,
             cwd,
           });
-          if (res.snapshot) {
+          if (res?.snapshot) {
             beforeSnapshot = res.snapshot;
             updateWorkspace(wsId, (prev) => ({
               ...prev,
@@ -5254,7 +5297,7 @@ interface CreateWorkspaceOptions {
         setIsVerificationStopping(false);
         setIsVerificationStopTimeout(false);
         inFlightVerificationRunIdRef.current = null;
-        verificationRuntimeRef.current = null;
+        endVerificationRuntime(verificationRuntimeRef, paneCaptureRuntimesRef.current);
 
         setWorkspaces((prev) => {
           const currentWs = prev.find((w) => w.id === wsId);
@@ -5307,7 +5350,7 @@ interface CreateWorkspaceOptions {
         }
         setIsVerificationStopping(false);
         setIsVerificationStopTimeout(false);
-        verificationRuntimeRef.current = null;
+        endVerificationRuntime(verificationRuntimeRef, paneCaptureRuntimesRef.current);
 
         setWorkspaces((prev) => {
           const currentWs = prev.find((w) => w.id === wsId);
@@ -5612,14 +5655,9 @@ interface CreateWorkspaceOptions {
         workspacesRef.current = next;
         return next;
       });
-
-      savePersistedWorkspaceState({
-        workspaces: workspacesRef.current,
-        activeWorkspaceId: activeWorkspaceIdRef.current,
-        activeMonitorView,
-      });
+      flushPersistenceOnCommitRef.current = true;
     },
-    [activeMonitorView],
+    [],
   );
 
   const handleContinueUnfinishedVerification = useCallback(
@@ -5661,11 +5699,12 @@ interface CreateWorkspaceOptions {
 
       let beforeSnapshot: RepositorySnapshot | null = null;
       try {
-        const res = await collectRepositoryEvidence({
+        const res = await collectPreVerificationSnapshot({
           workspaceId: wsId,
+          targetSessionId,
           cwd,
         });
-        if (res.snapshot) {
+        if (res?.snapshot) {
           beforeSnapshot = res.snapshot;
           updateWorkspace(wsId, (prev) => ({
             ...prev,
@@ -5727,6 +5766,8 @@ interface CreateWorkspaceOptions {
 
       const repoRoot = ws.repository?.rootPath;
       if (!repoRoot) return;
+      // CROSSPLAT-005C: no Git against a root known to be unreachable.
+      if (deriveWorkspaceRootState(ws, hostPathPlatform()).kind !== 'local-and-usable') return;
 
       const requestId = (activeCollectionRequestRef.current.get(wsId) ?? 0) + 1;
       activeCollectionRequestRef.current.set(wsId, requestId);
@@ -5788,7 +5829,7 @@ interface CreateWorkspaceOptions {
     [updateWorkspace],
   );
 
-  const handleOpenFolder = useCallback(
+  const openFolderAndBind = useCallback(
     async (targetWorkspaceId?: LogicalWorkspaceId): Promise<LogicalWorkspace | null> => {
       try {
         const selectedPath = await openFolderPicker();
@@ -5850,6 +5891,18 @@ interface CreateWorkspaceOptions {
       handleRefreshRepositoryEvidence,
       showTranscriptFeedback,
     ],
+  );
+
+  // WORKSPACE-CREATE-GUARD-001: Add Workspace / Open Folder runs one folder flow at a time;
+  // repeated clicks while the picker or workspace setup is pending are ignored.
+  const folderFlowPendingRef = useRef(false);
+  const [isFolderFlowPending, setIsFolderFlowPending] = useState(false);
+  const handleOpenFolder = useCallback(
+    (targetWorkspaceId?: LogicalWorkspaceId) =>
+      runExclusive(folderFlowPendingRef, setIsFolderFlowPending, () =>
+        openFolderAndBind(targetWorkspaceId),
+      ),
+    [openFolderAndBind],
   );
 
   const transcriptProps: PanelLayoutTranscriptProps = {
@@ -5963,6 +6016,7 @@ interface CreateWorkspaceOptions {
     selectedVerificationCriterionIds: activeWorkspace
       ? getCanonicalVerificationSelection(activeWorkspace)
       : undefined,
+    isVerificationTargetDispatchable: isVerificationTargetDispatchable(activeWorkspace),
     onToggleSelectVerificationCriterion: handleToggleSelectVerificationCriterion,
     onSelectAllVerificationCriteria: handleSelectAllVerificationCriteria,
     onClearVerificationCriteriaSelection: handleClearVerificationCriteriaSelection,
@@ -5998,11 +6052,12 @@ interface CreateWorkspaceOptions {
         setActiveMonitorView(view);
       }
     },
-    isMonitorFocused,
-    onToggleMonitorFocus: () => setIsMonitorFocused((prev) => !prev),
     activeWorkspaceSurface: activeSurface,
     workspaceName: activeWorkspace?.name,
     workspaceRootPath: activeWorkspace?.rootPath,
+    workspaceRootNotice: activeWorkspace
+      ? describeWorkspaceRootState(deriveWorkspaceRootState(activeWorkspace, hostPathPlatform()))
+      : null,
     repositoryRoot: activeWorkspace?.repository?.rootPath,
     repositoryBranch: activeWorkspace?.repository?.branch,
     onOpenFolder: () => handleOpenFolder(activeWorkspace?.id),
@@ -6033,6 +6088,8 @@ interface CreateWorkspaceOptions {
         onRequestDeleteWorkspace={requestDeleteWorkspace}
         onRenameWorkspace={renameWorkspace}
         onReorderWorkspace={reorderWorkspace}
+        appVersion={appVersion}
+        isFolderFlowPending={isFolderFlowPending}
       />
 
       {/* Global Warning Banner: Active Application/Workspace Warning Stack */}
@@ -6146,7 +6203,20 @@ interface CreateWorkspaceOptions {
                           onTerminalInput={handleTerminalInput}
                           onTerminalOutput={handleTerminalOutput}
                           onSessionEnded={handleSessionEnded}
-                          transcriptProps={transcriptProps}
+                          transcriptProps={
+                            isWorkspaceActive
+                              ? transcriptProps
+                              : {
+                                  ...transcriptProps,
+                                  workspaceName: ws.name,
+                                  workspaceRootPath: ws.rootPath,
+                                  workspaceRootNotice: describeWorkspaceRootState(
+                                    deriveWorkspaceRootState(ws, hostPathPlatform()),
+                                  ),
+                                  repositoryRoot: ws.repository?.rootPath,
+                                  repositoryBranch: ws.repository?.branch,
+                                }
+                          }
                           terminalPaneToast={isTabActive ? terminalPaneToast : null}
                           isCapturePanelOpen={tab.isCapturePanelOpen ?? true}
                           capturePanelWidth={tab.capturePanelWidth ?? 400}

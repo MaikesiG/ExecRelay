@@ -81,9 +81,49 @@ const tabBarSource = fs.readFileSync(
 const appSource = fs.readFileSync(path.resolve(__dirname, '../app/src/App.tsx'), 'utf8');
 assert.match(tabBarSource, /key=\{ws\.id\}/);
 assert.doesNotMatch(tabBarSource, /key=\{index\}/);
-assert.match(tabBarSource, /onReorderWorkspace\(draggedId, ws\.id, dropPlacement\)/);
+// HARDENING-004: workspace tabs use the terminal-tab pointer reorder model. HTML5
+// drag-and-drop never reaches the Tauri webview while native drag-drop handling is enabled.
+assert.match(tabBarSource, /onReorderWorkspace\(draggedId, target\.tabId, target\.placement\)/);
+assert.doesNotMatch(tabBarSource, /\bdraggable\b|onDragStart|onDragOver|onDrop=|dataTransfer/);
+assert.match(tabBarSource, /resolveTabDropTarget\(/);
+assert.match(tabBarSource, /TAB_DRAG_THRESHOLD_PX/);
+assert.match(tabBarSource, /onPointerDown=\{\(e\) => handlePointerDown\(e, ws\)\}/);
+assert.match(tabBarSource, /window\.addEventListener\('pointermove'/);
+assert.match(tabBarSource, /window\.removeEventListener\('pointerup'/);
+assert.match(tabBarSource, /data-workspace-id=\{ws\.id\}/);
+assert.match(tabBarSource, /suppressClickRef\.current = true/, 'a completed drag does not also activate');
+assert.match(
+  tabBarSource,
+  /className="workspace-tab-item-close[^"]*"\s+onPointerDown=\{\(e\) => e\.stopPropagation\(\)\}/,
+  'pressing close never starts a drag',
+);
 assert.match(tabBarSource, /onRequestDeleteWorkspace\(ws\.id\)/);
 assert.match(appSource, /workspacesRef\.current = next/);
 assert.match(appSource, /activeWorkspaceId=\{activeWorkspaceId\}/);
+
+// HARDENING-004 milestone sequence: identity and active workspace follow IDs, not indexes.
+{
+  const { findAdjacentId } = (() => {
+    const src = fs.readFileSync(path.resolve(__dirname, '../app/src/features/workspace/shortcutNavigation.ts'), 'utf8');
+    const out = ts.transpileModule(src, { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText;
+    const m = { exports: {} };
+    new Function('module', 'exports', 'require', out)(m, m.exports, () => ({}));
+    return m.exports;
+  })();
+  let order = [a, b, c, d];
+  const active = 'b';
+  order = reorderWorkspaces(order, 'd', 'a', 'before');
+  order = reorderWorkspaces(order, 'a', 'c', 'before');
+  assert.deepStrictEqual(ids(order), ['d', 'b', 'a', 'c'], 'A B C D -> D B A C');
+  order = reorderWorkspaces(order, 'b', 'd', 'before');
+  order = reorderWorkspaces(order, 'a', 'c', 'after');
+  assert.deepStrictEqual(ids(order), ['b', 'd', 'c', 'a'], 'D B A C -> B D C A');
+  for (const original of [a, b, c, d]) {
+    assert.strictEqual(order.find((ws) => ws.id === original.id), original, 'same workspace object, nothing recreated');
+  }
+  assert.strictEqual(findAdjacentId(ids(order), active, 1), 'd', 'Next follows visual order');
+  assert.strictEqual(findAdjacentId(ids(order), active, -1), 'a', 'Previous follows visual order (wraps)');
+  assert.deepStrictEqual(ids(order.filter((ws) => ws.id !== 'd')), ['b', 'c', 'a'], 'close after reorder keeps order');
+}
 
 console.log('UX-REORDER-001 tests passed.');

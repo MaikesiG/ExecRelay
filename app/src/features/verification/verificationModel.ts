@@ -21,6 +21,7 @@
  */
 
 import type { Execution } from '../execution/types';
+import { isRelativePath } from '../workspace/pathPolicy';
 import type {
   VerificationContract,
   VerificationCriterion,
@@ -492,11 +493,8 @@ export function validateCriterionInput(params: {
     };
   }
 
-  if (
-    workingDir.startsWith('/') ||
-    workingDir.startsWith('\\') ||
-    /^[a-zA-Z]:[/\\]/.test(workingDir)
-  ) {
+  // CROSSPLAT-005B: POSIX/drive/UNC/extended absolute, drive-relative and rooted forms
+  if (!isRelativePath(workingDir)) {
     return {
       valid: false,
       error: `Working directory must be relative to the workspace root: ${workingDir}`,

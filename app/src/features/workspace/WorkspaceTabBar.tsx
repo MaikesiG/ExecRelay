@@ -5,7 +5,11 @@ import {
   type LogicalWorkspace,
   type LogicalWorkspaceId,
 } from './types';
-import type { WorkspaceDropPlacement } from './workspaceReorder';
+import {
+  resolveTabDropTarget,
+  TAB_DRAG_THRESHOLD_PX,
+  type WorkspaceDropPlacement,
+} from './workspaceReorder';
 import { useTabStripScroll } from './useTabStripScroll';
 import './WorkspaceTabBar.css';
 import './ChromeTabs.css';
@@ -23,6 +27,10 @@ export interface WorkspaceTabBarProps {
     placement: WorkspaceDropPlacement,
   ) => void;
   onOpenFolder?: (targetWorkspaceId?: LogicalWorkspaceId) => void;
+  /** Running app version from the app metadata; nothing is shown while unknown. */
+  appVersion?: string | null;
+  /** A folder picker / workspace setup is in progress; folder actions are unavailable. */
+  isFolderFlowPending?: boolean;
 }
 
 export function WorkspaceTabBar({
@@ -34,6 +42,8 @@ export function WorkspaceTabBar({
   onRenameWorkspace,
   onReorderWorkspace,
   onOpenFolder,
+  appVersion,
+  isFolderFlowPending = false,
 }: WorkspaceTabBarProps) {
   const [editingWorkspaceId, setEditingWorkspaceId] =
     useState<LogicalWorkspaceId | null>(null);
@@ -83,10 +93,123 @@ export function WorkspaceTabBar({
     itemsCount: workspaces.length,
   });
 
+  // Pointer-based reorder, mirroring terminal tabs (WorkspaceTabs). HTML5 drag-and-drop is
+  // not delivered to the Tauri webview while native drag-drop handling is enabled.
+  const dragGestureRef = useRef<{
+    workspaceId: LogicalWorkspaceId;
+    startX: number;
+    startY: number;
+    pointerId: number;
+    hasMovedPastThreshold: boolean;
+  } | null>(null);
+  const suppressClickRef = useRef(false);
+  const windowListenersRef = useRef<{
+    onMove: (e: PointerEvent) => void;
+    onUp: (e: PointerEvent) => void;
+    onCancel: (e: PointerEvent) => void;
+  } | null>(null);
+
   const clearDragState = useCallback(() => {
+    const listeners = windowListenersRef.current;
+    if (listeners) {
+      window.removeEventListener('pointermove', listeners.onMove, true);
+      window.removeEventListener('pointerup', listeners.onUp, true);
+      window.removeEventListener('pointercancel', listeners.onCancel, true);
+      windowListenersRef.current = null;
+    }
+    dragGestureRef.current = null;
     setDraggingWorkspaceId(null);
     setDropTarget(null);
   }, []);
+
+  useEffect(() => clearDragState, [clearDragState]);
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && dragGestureRef.current) clearDragState();
+    };
+    const onBlur = () => {
+      if (dragGestureRef.current) clearDragState();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('blur', onBlur);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('blur', onBlur);
+    };
+  }, [clearDragState]);
+
+  const resolveDropTarget = useCallback(
+    (clientX: number, draggedId: LogicalWorkspaceId) => {
+      const container = containerRef.current;
+      if (!container) return null;
+      const items = Array.from(
+        container.querySelectorAll<HTMLElement>('.workspace-tab-item[data-workspace-id]'),
+      ).map((el) => ({
+        tabId: el.getAttribute('data-workspace-id') as LogicalWorkspaceId,
+        rect: el.getBoundingClientRect(),
+      }));
+      return resolveTabDropTarget(items, clientX, draggedId);
+    },
+    [containerRef],
+  );
+
+  const handlePointerDown = useCallback(
+    (e: React.PointerEvent<HTMLButtonElement>, ws: LogicalWorkspace) => {
+      if (e.button !== 0 || editingWorkspaceId) return;
+      clearDragState();
+      dragGestureRef.current = {
+        workspaceId: ws.id,
+        startX: e.clientX,
+        startY: e.clientY,
+        pointerId: e.pointerId,
+        hasMovedPastThreshold: false,
+      };
+
+      const onMove = (moveEvt: PointerEvent) => {
+        const gesture = dragGestureRef.current;
+        if (!gesture || gesture.pointerId !== moveEvt.pointerId) return;
+        if (!gesture.hasMovedPastThreshold) {
+          const distance = Math.hypot(
+            moveEvt.clientX - gesture.startX,
+            moveEvt.clientY - gesture.startY,
+          );
+          if (distance < TAB_DRAG_THRESHOLD_PX) return;
+          gesture.hasMovedPastThreshold = true;
+          setDraggingWorkspaceId(gesture.workspaceId);
+        }
+        moveEvt.preventDefault();
+        const target = resolveDropTarget(moveEvt.clientX, gesture.workspaceId);
+        setDropTarget(target ? { workspaceId: target.tabId, placement: target.placement } : null);
+      };
+      const onUp = (upEvt: PointerEvent) => {
+        const gesture = dragGestureRef.current;
+        if (!gesture || gesture.pointerId !== upEvt.pointerId) return;
+        const target = gesture.hasMovedPastThreshold
+          ? resolveDropTarget(upEvt.clientX, gesture.workspaceId)
+          : null;
+        const draggedId = gesture.workspaceId;
+        const wasDragging = gesture.hasMovedPastThreshold;
+        clearDragState();
+        if (!wasDragging) return; // A plain press is a normal click: activation stays on onClick.
+        suppressClickRef.current = true;
+        setTimeout(() => {
+          suppressClickRef.current = false;
+        }, 150);
+        if (target && target.tabId !== draggedId) {
+          onReorderWorkspace(draggedId, target.tabId, target.placement);
+        }
+      };
+      const onCancel = (cancelEvt: PointerEvent) => {
+        if (dragGestureRef.current?.pointerId === cancelEvt.pointerId) clearDragState();
+      };
+      windowListenersRef.current = { onMove, onUp, onCancel };
+      window.addEventListener('pointermove', onMove, true);
+      window.addEventListener('pointerup', onUp, true);
+      window.addEventListener('pointercancel', onCancel, true);
+    },
+    [clearDragState, editingWorkspaceId, onReorderWorkspace, resolveDropTarget],
+  );
 
   return (
     <nav
@@ -112,28 +235,7 @@ export function WorkspaceTabBar({
               key={ws.id}
               className={`workspace-tab-item chrome-tab chrome-tab--workspace ${isActive ? 'workspace-tab-item--active chrome-tab--active' : ''} ${isDragging ? 'workspace-tab-item--dragging' : ''} ${dropPlacement ? `workspace-tab-item--drop-${dropPlacement}` : ''}`}
               data-active={isActive ? 'true' : 'false'}
-              onDragOver={(e) => {
-                if (!draggingWorkspaceId) return;
-                if (draggingWorkspaceId === ws.id) {
-                  setDropTarget(null);
-                  return;
-                }
-                e.preventDefault();
-                e.dataTransfer.dropEffect = 'move';
-                const rect = e.currentTarget.getBoundingClientRect();
-                const placement =
-                  e.clientX < rect.left + rect.width / 2 ? 'before' : 'after';
-                setDropTarget({ workspaceId: ws.id, placement });
-              }}
-              onDrop={(e) => {
-                e.preventDefault();
-                const draggedId =
-                  draggingWorkspaceId || e.dataTransfer.getData('text/plain');
-                if (draggedId && dropPlacement) {
-                  onReorderWorkspace(draggedId, ws.id, dropPlacement);
-                }
-                clearDragState();
-              }}
+              data-workspace-id={ws.id}
             >
               {isEditing ? (
                 <div className="workspace-tab-item-edit-container">
@@ -179,14 +281,14 @@ export function WorkspaceTabBar({
                   aria-selected={isActive}
                   aria-controls={`terminal-workspace-${ws.id}`}
                   className="workspace-tab-item-button"
-                  draggable
-                  onDragStart={(e) => {
-                    e.dataTransfer.effectAllowed = 'move';
-                    e.dataTransfer.setData('text/plain', ws.id);
-                    setDraggingWorkspaceId(ws.id);
+                  onPointerDown={(e) => handlePointerDown(e, ws)}
+                  onClick={() => {
+                    if (suppressClickRef.current) {
+                      suppressClickRef.current = false;
+                      return;
+                    }
+                    onSelectWorkspace(ws.id);
                   }}
-                  onDragEnd={clearDragState}
-                  onClick={() => onSelectWorkspace(ws.id)}
                   onDoubleClick={(e) => {
                     e.stopPropagation();
                     startRename(ws);
@@ -216,15 +318,12 @@ export function WorkspaceTabBar({
                     <span
                       role="button"
                       tabIndex={0}
-                      draggable={false}
                       className="workspace-tab-bind-folder-btn"
+                      aria-disabled={isFolderFlowPending || undefined}
+                      onPointerDown={(e) => e.stopPropagation()}
                       onClick={(e) => {
                         e.stopPropagation();
                         onOpenFolder(ws.id);
-                      }}
-                      onDragStart={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
                       }}
                       onKeyDown={(e) => {
                         if (e.key === 'Enter' || e.key === ' ') {
@@ -246,6 +345,7 @@ export function WorkspaceTabBar({
                 <button
                   type="button"
                   className="workspace-tab-item-close chrome-close-button chrome-close-button--tab close-button"
+                  onPointerDown={(e) => e.stopPropagation()}
                   onClick={(e) => {
                     e.stopPropagation();
                     onRequestDeleteWorkspace(ws.id);
@@ -271,11 +371,19 @@ export function WorkspaceTabBar({
             onCreateWorkspace();
           }
         }}
+        disabled={isFolderFlowPending}
+        aria-busy={isFolderFlowPending || undefined}
         aria-label="Open Folder"
-        title="Open Folder"
+        title={isFolderFlowPending ? 'Opening folder…' : 'Open Folder'}
       >
         +
       </button>
+
+      {appVersion && (
+        <span className="workspace-tab-bar-version" title={`ExecRelay version ${appVersion}`}>
+          ExecRelay v{appVersion}
+        </span>
+      )}
     </nav>
   );
 }

@@ -41,6 +41,7 @@
 }
 
 .workspace-tab-item-button {
+  touch-action: none;
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -86,11 +87,12 @@
   background: var(--green, #34d399);
 }
 
+/* WORKSPACE-STATUS-001: capturing is not a failure, so it does not use the failure red. */
 .workspace-tab-status-dot--capturing,
 .workspace-tab-status-dot--listening,
 .workspace-tab-capture-status--capturing,
 .workspace-tab-capture-status--listening {
-  background: var(--red, #f87171);
+  background: var(--accent, #7c8cff);
 }
 
 .workspace-tab-status-dot--paused,
@@ -111,6 +113,7 @@
 
 .workspace-tab-item--dragging {
   opacity: 0.55;
+  cursor: grabbing;
 }
 
 .workspace-tab-item--drop-before::after,
@@ -176,6 +179,14 @@
   transition: background 150ms ease, color 150ms ease, border-color 150ms ease;
 }
 
+/* WORKSPACE-CREATE-GUARD-001: a folder flow is already pending. */
+.workspace-tab-bar-add:disabled,
+.workspace-tab-bind-folder-btn[aria-disabled='true'] {
+  opacity: 0.4;
+  cursor: progress;
+  pointer-events: none;
+}
+
 .workspace-tab-bar-add:hover {
   background: rgba(124, 140, 255, 0.1);
   color: var(--text);
@@ -209,4 +220,15 @@
   background: rgba(124, 140, 255, 0.2);
   color: #ffffff;
   border-color: rgba(124, 140, 255, 0.7);
+}
+
+/* APP-VERSION-001: secondary, right-aligned build identity. */
+.workspace-tab-bar-version {
+  margin-left: auto;
+  padding: 0 10px;
+  color: var(--muted);
+  font-size: 11px;
+  opacity: 0.7;
+  white-space: nowrap;
+  flex-shrink: 0;
 }

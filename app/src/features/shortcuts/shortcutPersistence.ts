@@ -115,7 +115,7 @@ export function sanitizeShortcutSettings(
     const cleanOverrides: KeyboardShortcutSettingsV2['overrides'] = {};
 
     // Standard platforms
-    for (const p of ['macos', 'windows', 'linux'] as const) {
+    for (const p of ['macos', 'windows', 'linux', 'unknown'] as const) {
       if (rawOverrides[p]) {
         cleanOverrides[p] = sanitizePlatformMap(rawOverrides[p]);
       }
@@ -123,7 +123,7 @@ export function sanitizeShortcutSettings(
 
     // Preserve unknown forward platforms safely without crashing
     for (const [key, val] of Object.entries(rawOverrides)) {
-      if (key !== 'macos' && key !== 'windows' && key !== 'linux' && val && typeof val === 'object') {
+      if (key !== 'macos' && key !== 'windows' && key !== 'linux' && key !== 'unknown' && val && typeof val === 'object') {
         (cleanOverrides as Record<string, unknown>)[key] = val;
       }
     }

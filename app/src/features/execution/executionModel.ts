@@ -16,8 +16,10 @@ import {
   type Actor,
   type EvidenceBlock,
   type EvidenceBlockType,
+  type EvidenceHealthIssue,
   type Execution,
   type ExecutionCompletionSource,
+  type ExecutionEvidenceHealth,
   type ExecutionIntent,
   type ExecutionLifecycle,
   type ExecutionOutcome,
@@ -159,6 +161,125 @@ export function deriveExecutionOutcome(
     return block.exitCode === 0 ? 'succeeded' : 'failed';
   }
   return 'unknown';
+}
+
+export interface EvidenceHealthResult {
+  health: ExecutionEvidenceHealth;
+  issues: EvidenceHealthIssue[];
+}
+
+/**
+ * Derives ExecRelay/evidence health, independently of the execution outcome.
+ *
+ * CRITICAL RULE:
+ * A non-zero exit observed through trusted integration is healthy evidence of a failed
+ * command, never an ExecRelay error. Only issues recorded by the subsystem that produced
+ * them ('shell-integration-failed') make health 'error'; missing trusted exit status
+ * only degrades it. Output text is never inspected here.
+ */
+export function deriveEvidenceHealth(
+  block: Pick<
+    TranscriptBlock,
+    | 'isComplete'
+    | 'executionState'
+    | 'lifecycle'
+    | 'exitCode'
+    | 'outcomeSource'
+    | 'outcomeTrusted'
+    | 'evidenceIssues'
+  >,
+): EvidenceHealthResult {
+  const issues: EvidenceHealthIssue[] = [...(block.evidenceIssues ?? [])];
+  const lifecycle = deriveExecutionLifecycle(block);
+
+  if (lifecycle === 'finished' || lifecycle === 'interrupted') {
+    const hasExitCode = block.exitCode !== null && block.exitCode !== undefined;
+    const trustedSource =
+      block.outcomeTrusted === true ||
+      block.outcomeSource === 'trusted-shell' ||
+      block.outcomeSource === 'trusted-process' ||
+      block.outcomeSource === 'structured-agent';
+    if (!hasExitCode || block.outcomeSource === 'unknown') {
+      const issue: EvidenceHealthIssue =
+        trustedSource || lifecycle === 'interrupted'
+          ? 'exit-status-unavailable'
+          : 'trusted-integration-unavailable';
+      if (!issues.includes(issue)) issues.push(issue);
+    }
+  }
+
+  const health: ExecutionEvidenceHealth = issues.includes('shell-integration-failed')
+    ? 'error'
+    : issues.length > 0
+      ? 'degraded'
+      : 'healthy';
+  return { health, issues };
+}
+
+const EVIDENCE_ISSUE_DETAILS: Record<EvidenceHealthIssue, string> = {
+  'shell-integration-failed':
+    'Shell integration failure. Trusted execution evidence may be unavailable.',
+  'derived-evidence-failed': 'Derived evidence processing failed; raw evidence retained.',
+  'trusted-integration-unavailable':
+    'Trusted shell integration unavailable; exit status unknown.',
+  'exit-status-unavailable': 'Execution ended, but trusted exit status is unavailable.',
+};
+
+/**
+ * Secondary status label for non-healthy evidence, or null when healthy.
+ * Command failures never produce a label here; they are shown by outcome and exit code.
+ */
+export function describeEvidenceHealth(
+  result: EvidenceHealthResult,
+): { health: Exclude<ExecutionEvidenceHealth, 'healthy'>; label: string; detail: string } | null {
+  if (result.health === 'healthy') return null;
+  return {
+    health: result.health,
+    label: result.health === 'error' ? 'ExecRelay error' : 'evidence degraded',
+    detail: result.issues.map((issue) => EVIDENCE_ISSUE_DETAILS[issue]).join(' '),
+  };
+}
+
+/**
+ * Adds an evidence health issue without duplicating it.
+ */
+export function withEvidenceIssue(
+  issues: EvidenceHealthIssue[] | undefined,
+  issue: EvidenceHealthIssue,
+): EvidenceHealthIssue[] {
+  return issues?.includes(issue) ? issues : [...(issues ?? []), issue];
+}
+
+export interface ExecutionResultsSummary {
+  succeeded: Execution[];
+  failed: Execution[];
+  unknown: Execution[];
+  /** Worst evidence health across executions; command failures never raise it. */
+  evidenceHealth: ExecutionEvidenceHealth;
+}
+
+/**
+ * Groups a sequence of executions by outcome while keeping evidence health separate,
+ * so one failed command (e.g. a pasted `#` line, exit 127) is reported as a command
+ * failure alongside passing commands instead of turning the whole sequence into an error.
+ */
+export function summarizeExecutionResults(
+  executions: Execution[],
+): ExecutionResultsSummary {
+  const summary: ExecutionResultsSummary = {
+    succeeded: [],
+    failed: [],
+    unknown: [],
+    evidenceHealth: 'healthy',
+  };
+  for (const execution of executions) {
+    summary[execution.outcome].push(execution);
+    const health = execution.evidenceHealth ?? 'healthy';
+    if (health === 'error' || (health === 'degraded' && summary.evidenceHealth === 'healthy')) {
+      summary.evidenceHealth = health;
+    }
+  }
+  return summary;
 }
 
 /**
@@ -353,6 +474,7 @@ export function executionFromTranscriptBlock(
   const evidenceBlocks = evidenceBlocksFromTranscriptBlock(block);
   const evidenceBlockIds = evidenceBlocks.map((b) => b.id);
   const diagErr = block.hasDiagnosticError ?? (block.output ? detectErrorFromOutput(block.output).isError : false);
+  const evidenceHealth = deriveEvidenceHealth(block);
 
   return {
     id: block.id,
@@ -375,6 +497,8 @@ export function executionFromTranscriptBlock(
     outcomeTrusted:
       block.outcomeTrusted ?? (block.outcomeSource === 'trusted-shell'),
     exitCode: block.exitCode ?? null,
+    evidenceHealth: evidenceHealth.health,
+    evidenceIssues: evidenceHealth.issues,
     hasDiagnosticError: diagErr,
     startedAt: block.startedAt,
     completedAt: block.completedAt ?? null,

@@ -54,10 +54,12 @@ function ShortcutSettingsModalContent({
       ? 'macOS'
       : platform === 'windows'
         ? 'Windows'
-        : 'Linux';
+        : platform === 'linux'
+          ? 'Linux'
+          : 'this system';
 
   // Draft state representing working copy of bindings initialized fresh on mount
-  const [draftBindings, setDraftBindings] = useState<Record<AppCommand, ShortcutBinding>>(() =>
+  const [draftBindings, setDraftBindings] = useState<Partial<Record<AppCommand, ShortcutBinding>>>(() =>
     registry.getEffectiveBindings(),
   );
   const [recordingCommand, setRecordingCommand] = useState<AppCommand | null>(null);
@@ -116,6 +118,7 @@ function ShortcutSettingsModalContent({
     // Validate each binding in draftBindings against safety policies
     for (const cmd of enabledCommands) {
       const binding = draftBindings[cmd];
+      if (!binding) continue;
       const val = validateShortcutBinding(binding, {
         platform,
         targetCommand: cmd,
@@ -132,7 +135,7 @@ function ShortcutSettingsModalContent({
     const overridesToSave: Partial<Record<AppCommand, ShortcutBinding>> = {};
     for (const cmd of enabledCommands) {
       const binding = draftBindings[cmd];
-      if (!areBindingsEqual(binding, defaults[cmd])) {
+      if (binding && !areBindingsEqual(binding, defaults[cmd])) {
         overridesToSave[cmd] = { ...binding };
       }
     }

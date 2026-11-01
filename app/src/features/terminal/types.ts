@@ -59,7 +59,10 @@ export interface TerminalSessionInfo {
   rows: number;
   exitCode?: number | null;
   integrationNonce?: string | null;
+  /** True only after the authenticated shell integration handshake was observed. */
   shellIntegrationAvailable?: boolean;
+  /** Integration is set up for the shell; its handshake has not been observed yet. */
+  shellIntegrationPending?: boolean;
 }
 
 /* ========================================================================== */

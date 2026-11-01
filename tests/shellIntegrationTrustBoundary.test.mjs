@@ -645,6 +645,37 @@ console.log('Running Shell Integration Trust Boundary & Authenticated Lifecycle 
   console.log('✓ Native shell integration scripts satisfy all security and unexport invariants');
 }
 
+// ---------------------------------------------------------------------------
+// Test 19: Command-start cwd is parsed and only trusted with the session nonce
+// ---------------------------------------------------------------------------
+{
+  console.log('\n--- Test 19: Command-start cwd Trust ---');
+
+  const sessionNonce = 'cwd-nonce-session-a';
+  const parser = new ShellIntegrationStreamParser(sessionNonce);
+  const b64 = (value) => Buffer.from(value, 'utf8').toString('base64');
+
+  const trusted = parser.parse(
+    `\x1b]133;C;aid=${sessionNonce};cmd=${b64('pwd')};cwd=${b64('/tmp/dir with spaces')}\x07`,
+  );
+  assert.strictEqual(trusted.events[0].trust, 'trusted');
+  assert.strictEqual(trusted.events[0].command, 'pwd');
+  assert.strictEqual(trusted.events[0].cwd, '/tmp/dir with spaces');
+
+  // Without cmd= (line not in shell history) the cwd is still carried.
+  const noCommand = parser.parse(`\x1b]133;C;aid=${sessionNonce};cwd=${b64('/tmp')}\x07`);
+  assert.strictEqual(noCommand.events[0].command, undefined);
+  assert.strictEqual(noCommand.events[0].cwd, '/tmp');
+
+  // Forged or other-session cwd markers stay untrusted.
+  const forged = parser.parse(`\x1b]133;C;cwd=${b64('/etc')}\x07`);
+  const otherSession = parser.parse(`\x1b]133;C;aid=cwd-nonce-session-b;cwd=${b64('/etc')}\x07`);
+  assert.strictEqual(forged.events[0].trust, 'untrusted');
+  assert.strictEqual(otherSession.events[0].trust, 'untrusted');
+
+  console.log('✓ Command-start cwd parsed; only authenticated markers are trusted');
+}
+
 console.log('\n=======================================================================');
-console.log('ALL 18 SHELL INTEGRATION TRUST BOUNDARY TESTS PASSED!');
+console.log('ALL 19 SHELL INTEGRATION TRUST BOUNDARY TESTS PASSED!');
 console.log('=======================================================================\n');

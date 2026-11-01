@@ -65,6 +65,45 @@ export function isVerificationRuntimeActive(
 }
 
 /**
+ * Execution identity for a block that is finalized before its registration is visible to
+ * the finalizer (a fast command's trusted command-end can be handled before React applies
+ * the queued block registration). When the active verification runtime owns the execution,
+ * the block keeps that run/criterion identity so its completion reconciles the run instead
+ * of leaving it RUNNING forever.
+ */
+export function resolveFallbackExecutionIdentity(
+  runtime:
+    | {
+        workspaceId: string;
+        runId: string;
+        currentExecutionId?: string;
+        expectedExecutionId?: string;
+        currentCriterionId?: string;
+        expectedCriterionId?: string;
+      }
+    | null
+    | undefined,
+  workspaceId: string,
+  executionId: string,
+):
+  | { intent: 'verification'; verificationRunId: string; verificationCriterionId?: string }
+  | { intent: 'interactive' } {
+  if (
+    runtime &&
+    runtime.workspaceId === workspaceId &&
+    (runtime.expectedExecutionId === executionId ||
+      runtime.currentExecutionId === executionId)
+  ) {
+    return {
+      intent: 'verification',
+      verificationRunId: runtime.runId,
+      verificationCriterionId: runtime.currentCriterionId ?? runtime.expectedCriterionId,
+    };
+  }
+  return { intent: 'interactive' };
+}
+
+/**
  * Gets the genuinely active (unresolved, non-terminal) verification run for a workspace, if any.
  * Returns null if no run is currently active or if activeRunId points to a completed/terminal run.
  */

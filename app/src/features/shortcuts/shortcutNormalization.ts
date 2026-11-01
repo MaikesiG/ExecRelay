@@ -8,16 +8,19 @@ import type { NormalizedShortcut, ShortcutBinding, ShortcutPlatform } from './ty
 export type { ShortcutPlatform };
 
 /**
- * Detects the active host operating system.
- * Supports explicit dependency injection via `customEnv` for deterministic testing.
+ * Detects the active host operating system: the one host identity for shortcuts, terminal
+ * copy/paste and PathPolicy. An injected `customEnv` replaces the globals entirely, so tests
+ * never depend on the machine they run on. Unrecognized hosts are `unknown`, never macOS.
  */
 export function detectPlatform(customEnv?: {
   userAgent?: string;
   platform?: string;
 }): ShortcutPlatform {
-  const ua =
-    customEnv?.userAgent ??
-    (typeof navigator !== 'undefined' ? navigator.userAgent : '');
+  const ua = customEnv
+    ? customEnv.userAgent
+    : typeof navigator !== 'undefined'
+      ? navigator.userAgent
+      : '';
 
   if (ua) {
     if (/Mac|iPod|iPhone|iPad/i.test(ua)) return 'macos';
@@ -25,11 +28,9 @@ export function detectPlatform(customEnv?: {
     if (/Linux|X11/i.test(ua)) return 'linux';
   }
 
-  const procPlatform =
-    customEnv?.platform ??
-    (typeof globalThis !== 'undefined'
-      ? (globalThis as { process?: { platform?: string } }).process?.platform
-      : undefined);
+  const procPlatform = customEnv
+    ? customEnv.platform
+    : (globalThis as { process?: { platform?: string } }).process?.platform;
 
   if (procPlatform) {
     if (procPlatform === 'darwin') return 'macos';
@@ -37,7 +38,25 @@ export function detectPlatform(customEnv?: {
     if (procPlatform === 'linux') return 'linux';
   }
 
-  return 'macos'; // Default to macOS if completely unknown
+  return 'unknown';
+}
+
+/**
+ * Shortcut modifier policy, separate from host identity: Meta (⌘) is the primary application
+ * modifier on macOS, Control on Windows and Linux (a shared convention, not a shared host), and
+ * an unknown host has none.
+ */
+export function primaryModifier(platform: ShortcutPlatform): 'meta' | 'ctrl' | null {
+  if (platform === 'macos') return 'meta';
+  if (platform === 'windows' || platform === 'linux') return 'ctrl';
+  return null;
+}
+
+/** Display name of the Meta key on non-macOS hosts. */
+function metaKeyName(platform: ShortcutPlatform, aria: boolean): string {
+  if (platform === 'linux') return 'Super';
+  if (platform === 'windows') return aria ? 'Windows' : 'Win';
+  return 'Meta';
 }
 
 /**
@@ -161,7 +180,7 @@ export function toNormalizedShortcut(binding: ShortcutBinding): NormalizedShortc
 /**
  * Checks equality between two ShortcutBindings.
  */
-export function areBindingsEqual(a: ShortcutBinding, b: ShortcutBinding): boolean {
+export function areBindingsEqual(a: ShortcutBinding | undefined, b: ShortcutBinding | undefined): boolean {
   if (!a || !b) return false;
   const normA = toNormalizedShortcut(a);
   const normB = toNormalizedShortcut(b);
@@ -180,6 +199,7 @@ function resolvePlatform(platformOrIsMac?: ShortcutPlatform | boolean): Shortcut
  * macOS: ⌘1, ⌃C, ⌥⇧1, ⌘⇧D
  * Windows: Ctrl+1, Alt+1, Ctrl+Shift+W, Win+D
  * Linux: Ctrl+1, Alt+1, Ctrl+Shift+W, Super+D
+ * Unknown: Ctrl+1, Alt+1, Meta+D (no macOS symbols)
  */
 export function formatShortcutDisplay(
   binding: ShortcutBinding,
@@ -202,7 +222,7 @@ export function formatShortcutDisplay(
     if (binding.ctrl) parts.push('Ctrl');
     if (binding.alt) parts.push('Alt');
     if (binding.shift) parts.push('Shift');
-    if (binding.meta) parts.push(platform === 'linux' ? 'Super' : 'Win');
+    if (binding.meta) parts.push(metaKeyName(platform, false));
     parts.push(keyDisplay);
     return parts.join('+');
   }
@@ -231,7 +251,7 @@ export function formatShortcutAriaLabel(
     if (binding.ctrl) parts.push('Control');
     if (binding.alt) parts.push('Alt');
     if (binding.shift) parts.push('Shift');
-    if (binding.meta) parts.push(platform === 'linux' ? 'Super' : 'Windows');
+    if (binding.meta) parts.push(metaKeyName(platform, true));
   }
 
   parts.push(keyName);

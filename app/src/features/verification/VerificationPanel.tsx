@@ -17,6 +17,8 @@ import type { TranscriptBlock } from "../transcript/types";
 import type { DiagnosticEvidence } from "../structuredEvidence/types";
 import "./VerificationPanel.css";
 
+const TARGET_INACTIVE_HINT = "Start or activate a terminal session to run verification.";
+
 export interface VerificationPanelProps {
   contract: VerificationContract;
   contracts?: VerificationContract[];
@@ -27,6 +29,8 @@ export interface VerificationPanelProps {
   isStopTimeout?: boolean;
   blocks?: TranscriptBlock[];
   selectedCriterionIds?: Set<string>;
+  /** VERIFY-ACTION-AVAILABILITY-001: the target terminal has a running session. */
+  isTargetDispatchable?: boolean;
   onToggleSelectCriterion?: (criterionId: string) => void;
   onSelectAllCriteria?: () => void;
   onClearCriteriaSelection?: () => void;
@@ -132,6 +136,7 @@ export const VerificationPanel = memo(function VerificationPanel({
   isStopTimeout,
   blocks,
   selectedCriterionIds: propsSelectedCriterionIds,
+  isTargetDispatchable = true,
   onToggleSelectCriterion,
   onSelectAllCriteria,
   onClearCriteriaSelection,
@@ -781,9 +786,9 @@ export const VerificationPanel = memo(function VerificationPanel({
                     <button
                       type="button"
                       className="verification-single-run-btn"
-                      disabled={isLocked}
+                      disabled={isLocked || !isTargetDispatchable}
                       onClick={() => onRunVerification([criterion.id])}
-                      title={`Run ${criterion.label} only`}
+                      title={isTargetDispatchable ? `Run ${criterion.label} only` : TARGET_INACTIVE_HINT}
                       aria-label={`Run ${criterion.label}`}
                     >
                       Run
@@ -851,6 +856,8 @@ export const VerificationPanel = memo(function VerificationPanel({
             type="button"
             className="verification-continue-btn"
             onClick={() => onContinueUnfinished(latestHistoricalRun!)}
+            disabled={!isTargetDispatchable}
+            title={isTargetDispatchable ? undefined : TARGET_INACTIVE_HINT}
           >
             Continue unfinished ({unfinishedCriteriaFromLatest.length})
           </button>
@@ -874,8 +881,10 @@ export const VerificationPanel = memo(function VerificationPanel({
               type="button"
               className="verification-run-btn"
               onClick={() => onRunVerification(Array.from(effectiveSelectedCriterionIds))}
-              disabled={effectiveSelectedCriterionIds.size === 0}
+              disabled={effectiveSelectedCriterionIds.size === 0 || !isTargetDispatchable}
+              title={isTargetDispatchable ? undefined : TARGET_INACTIVE_HINT}
               aria-label="Run selected verification checks"
+              aria-describedby={isTargetDispatchable ? undefined : "verification-target-inactive-hint"}
             >
               <svg
                 width="12"
@@ -892,6 +901,15 @@ export const VerificationPanel = memo(function VerificationPanel({
                 : "Run Selected"}
             </button>
           )}
+        </div>
+      )}
+      {!isLocked && !isTargetDispatchable && contract.criteria.length > 0 && (
+        <div
+          id="verification-target-inactive-hint"
+          className="verification-target-inactive-hint"
+          data-testid="verification-target-inactive-hint"
+        >
+          {TARGET_INACTIVE_HINT}
         </div>
       )}
 

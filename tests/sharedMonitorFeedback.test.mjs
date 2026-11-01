@@ -8,7 +8,7 @@
  * 4. Auto-dismiss timer semantics (success/info=4s, warning=8s, error=sticky/manual)
  * 5. Deduplication prevents rapid spam stacking
  * 6. Manual dismiss removes only the target item
- * 7. Feedback survives Monitor view switching and Focus Mode
+ * 7. Feedback survives Monitor view switching
  * 8. View-local states and canonical domain truth (ApprovalRecord, VerificationRun) are never converted to transient feedback
  */
 

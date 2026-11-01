@@ -718,6 +718,19 @@ export function getCanonicalVerificationSelection(
 }
 
 /**
+ * VERIFY-ACTION-AVAILABILITY-001: whether Verify can dispatch to its target terminal — the
+ * active pane of the active terminal tab, which Run Selected and Continue target — because
+ * that pane has a running session. Independent of criterion selection and runnability.
+ */
+export function isVerificationTargetDispatchable(
+  workspace: LogicalWorkspace | null | undefined,
+): boolean {
+  const tab = workspace?.terminalTabs.find((t) => t.id === workspace.activeTerminalTabId);
+  const pane = tab?.panes.find((p) => p.id === tab.activePaneId);
+  return Boolean(pane?.session.sessionId) && pane?.session.status === 'running';
+}
+
+/**
  * Clears all historical VerificationRuns from a workspace.
  * PROFILE PRESERVATION: VerificationProfile (contracts), criteria, commands,
  * and criterion selections are strictly preserved.

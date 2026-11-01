@@ -6,6 +6,9 @@ app/dist/
 native/target/
 native/gen/
 
+# Release-lane output (CROSSPLAT-010 workflows, packaging/linux/build.sh)
+out/
+
 # Environment files and local application data
 .env
 .env.*

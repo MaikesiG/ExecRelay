@@ -19,6 +19,8 @@ export interface ActiveBlockParser {
   command: string;
   buffer: string;
   echoChecked: boolean;
+  /** Trusted command-start cwd, kept for finalization before the block state commits. */
+  cwd?: string;
 }
 
 export type PaneCaptureRuntimeKey = `${string}:${string}:${string}`;
@@ -33,6 +35,19 @@ export function getPaneCaptureRuntimeKey(
 
 export type PaneCaptureStatus = 'idle' | 'capturing' | 'paused' | 'error';
 
+/**
+ * Observation a VerificationRun temporarily holds on its target pane so verification executions
+ * are recorded and reconciled. It is not a user Capture command: `restoreStatus` is the user's
+ * Capture status (the prior status, replaced by any explicit user Capture action during the run)
+ * and is applied when the run releases the lease.
+ */
+export interface VerificationCaptureLease {
+  runId: string;
+  restoreStatus: PaneCaptureStatus;
+  /** Batch created only so verification output could be recorded; dropped on release. */
+  verificationBatch: CaptureBatch | null;
+}
+
 export interface PaneCaptureRuntime {
   workspaceId: string;
   terminalTabId: string;
@@ -40,6 +55,7 @@ export interface PaneCaptureRuntime {
   paneOrdinal?: number;
 
   status: PaneCaptureStatus;
+  verificationLease: VerificationCaptureLease | null;
 
   captureSessionId: string | null;
   captureGroupId: string | null;
@@ -76,6 +92,7 @@ export function createPaneCaptureRuntime(
     paneId,
     paneOrdinal: paneOrdinal ?? 1,
     status: 'idle',
+    verificationLease: null,
     captureSessionId: null,
     captureGroupId: null,
     currentBatch: null,
@@ -93,6 +110,58 @@ export function createPaneCaptureRuntime(
 }
 
 export const createTerminalPaneRuntime = createPaneCaptureRuntime;
+
+/** The user's Capture status for a pane, independent of any verification lease. */
+export function getUserCaptureStatus(runtime: PaneCaptureRuntime): PaneCaptureStatus {
+  return runtime.verificationLease?.restoreStatus ?? runtime.status;
+}
+
+/**
+ * Arms observation for a verification run. The lease is held for the whole run: re-acquiring
+ * for a later criterion of the same pane keeps the user's status it already recorded.
+ */
+export function acquireVerificationCaptureLease(
+  runtime: PaneCaptureRuntime,
+  runId: string,
+  createBatch: () => CaptureBatch,
+): void {
+  if (!runtime.verificationLease) {
+    runtime.verificationLease = { runId, restoreStatus: runtime.status, verificationBatch: null };
+  }
+  runtime.verificationLease.runId = runId;
+  if (!runtime.currentBatch) {
+    runtime.currentBatch = createBatch();
+    runtime.verificationLease.verificationBatch = runtime.currentBatch;
+  }
+  runtime.status = 'capturing';
+}
+
+/**
+ * Records an explicit user Capture action on a pane that a verification run is observing.
+ * Returns true when deferred: the run keeps observing and the status applies on release.
+ */
+export function deferUserCaptureStatus(
+  runtime: PaneCaptureRuntime,
+  status: PaneCaptureStatus,
+): boolean {
+  if (!runtime.verificationLease) return false;
+  runtime.verificationLease.restoreStatus = status;
+  return true;
+}
+
+/** Ends a run's lease and applies the user's Capture status. Other runs' leases are untouched. */
+export function releaseVerificationCaptureLease(
+  runtime: PaneCaptureRuntime,
+  runId: string,
+): void {
+  const lease = runtime.verificationLease;
+  if (!lease || lease.runId !== runId) return;
+  runtime.verificationLease = null;
+  runtime.status = lease.restoreStatus;
+  if (lease.verificationBatch && runtime.currentBatch === lease.verificationBatch) {
+    runtime.currentBatch = null;
+  }
+}
 
 export function createTerminalTabRuntime(
   workspaceId: LogicalWorkspaceId | string,

@@ -77,6 +77,7 @@ export interface PanelLayoutTranscriptProps {
   isVerificationStopping?: boolean;
   isVerificationStopTimeout?: boolean;
   selectedVerificationCriterionIds?: Set<string>;
+  isVerificationTargetDispatchable?: boolean;
   onToggleSelectVerificationCriterion?: (criterionId: string) => void;
   onSelectAllVerificationCriteria?: () => void;
   onClearVerificationCriteriaSelection?: () => void;
@@ -101,11 +102,10 @@ export interface PanelLayoutTranscriptProps {
   changeAttributions?: import('../attribution/types').ChangeAttribution[];
   activeMonitorView?: import('../shortcuts/types').MonitorView;
   onSelectMonitorView?: (view: import('../shortcuts/types').MonitorView) => void;
-  isMonitorFocused?: boolean;
-  onToggleMonitorFocus?: () => void;
   activeWorkspaceSurface?: import('../shortcuts/types').ActiveWorkspaceSurface;
   workspaceName?: string;
   workspaceRootPath?: string;
+  workspaceRootNotice?: { message: string; path: string } | null;
   repositoryRoot?: string;
   repositoryBranch?: string;
   onOpenFolder?: () => void;
@@ -250,6 +250,7 @@ export function PanelLayoutNodeView({
               transcriptProps.workspaceRootPath
             }
             isActive={isPaneActive}
+            autoStartSession={!pane.restoredFromPersistence}
             onClick={() => onSetActivePane(pane.id)}
             ref={(handle) => {
               if (handle) {
@@ -357,6 +358,7 @@ export function PanelLayoutNodeView({
             isVerificationStopping={transcriptProps.isVerificationStopping}
             isVerificationStopTimeout={transcriptProps.isVerificationStopTimeout}
             selectedVerificationCriterionIds={transcriptProps.selectedVerificationCriterionIds}
+            isVerificationTargetDispatchable={transcriptProps.isVerificationTargetDispatchable}
             onToggleSelectVerificationCriterion={transcriptProps.onToggleSelectVerificationCriterion}
             onSelectAllVerificationCriteria={transcriptProps.onSelectAllVerificationCriteria}
             onClearVerificationCriteriaSelection={transcriptProps.onClearVerificationCriteriaSelection}
@@ -381,8 +383,6 @@ export function PanelLayoutNodeView({
             changeAttributions={transcriptProps.changeAttributions}
             activeView={transcriptProps.activeMonitorView}
             onViewChange={transcriptProps.onSelectMonitorView}
-            isMonitorFocused={transcriptProps.isMonitorFocused}
-            onToggleMonitorFocus={transcriptProps.onToggleMonitorFocus}
           />
         </DerivedSurfaceErrorBoundary>
         </div>

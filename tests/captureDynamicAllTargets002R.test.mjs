@@ -110,12 +110,13 @@ console.log('Running CAPTURE-UX-002R dynamic ALL target tests...');
   const css = fs.readFileSync(path.resolve(__dirname, '../app/src/App.css'), 'utf8');
 
   assert.ok(app.includes('prepareDynamicCapturePane'));
-  assert.ok(app.includes('runtime.status = existingRuntime.status'));
+  // A new pane mirrors the user's Capture status, never a verification lease (VERIFY-CAPTURE-REARM-001).
+  assert.ok(app.includes('runtime.status = getUserCaptureStatus(existingRuntime)'));
   assert.ok(app.includes('runtime.currentBatch = workspace.capture.currentBatch'));
   assert.ok(app.includes('resolveCaptureTargetPanes(ws)'));
   assert.ok(app.includes('selectedCapturePaneIds: activeCaptureTargetIds'));
   assert.strictEqual(app.includes('captureTerminalTabCount:'), false);
-  assert.ok(layout.includes('blocks={transcriptProps.blocks}'));
+  assert.ok(layout.includes('blocks={isTabActive ? transcriptProps.blocks : NO_BLOCKS}'));
   assert.ok(panel.includes("captureTargetMode === 'all'"));
   assert.match(panel, /className='capture-target-all-label'>\s*All\s*<\/span>/);
   assert.strictEqual(panel.includes('terminalTabCount'), false);

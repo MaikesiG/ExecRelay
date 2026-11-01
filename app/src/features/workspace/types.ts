@@ -73,6 +73,12 @@ export interface TerminalPane {
   stableOrdinal: number; // 1 through 6; never renumber
   accentId: PaneAccentId;
 
+  /**
+   * EXECRELAY-V020-RC-BLOCKER-001: True when this pane was hydrated from persisted storage.
+   * Restored panes remain inert (spawn no PTY/shell) until an explicit user action starts one.
+   */
+  restoredFromPersistence?: boolean;
+
   customTitle?: string | null;
   sessionTitle?: string | null;
   foregroundProcessTitle?: string | null;
@@ -199,6 +205,19 @@ export interface LogicalWorkspace {
   name: string;
 
   rootPath?: string;
+  /**
+   * CROSSPLAT-005A: a persisted root the PathPolicy did not accept on this host (foreign,
+   * unsupported or ambiguous). Kept verbatim so it is written back unchanged; never a cwd or a
+   * repository-detection input. `rootPath` is unset while this is set. CROSSPLAT-005C:
+   * `deriveWorkspaceRootState` tells foreign from unsupported.
+   */
+  unavailableRootPath?: string;
+  /**
+   * CROSSPLAT-005C: runtime observation of whether `rootPath` was a usable directory at the last
+   * lifecycle check (restore, terminal start). Never persisted; `undefined` = not checked yet.
+   * Read it through `deriveWorkspaceRootState`, not directly.
+   */
+  rootReachable?: boolean;
   repository?: RepositoryContext;
 
   terminalTabs: TerminalTab[];
@@ -386,7 +405,7 @@ export function getTerminalPaneDisplayTitle(
     pane.foregroundProcessName,
     pane.cwdLabel,
     pane.session?.sessionInfo?.cwd
-      ? (pane.session.sessionInfo.cwd.split('/').filter(Boolean).pop() ||
+      ? (pane.session.sessionInfo.cwd.split(/[/\\]/).filter(Boolean).pop() ||
         pane.session.sessionInfo.cwd)
       : null,
   ];

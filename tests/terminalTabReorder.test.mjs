@@ -56,9 +56,14 @@ function loadModule(relPath, dependencyOverrides = {}) {
 const terminalTabNameMod = loadModule(
   '../app/src/features/workspace/terminalTabName.ts',
 );
+const pathPolicyMod = loadModule('../app/src/features/workspace/pathPolicy.ts', {
+  '../shortcuts/shortcutNormalization': loadModule(
+    '../app/src/features/shortcuts/shortcutNormalization.ts',
+  ),
+});
 const persistMod = loadModule(
   '../app/src/features/workspace/workspacePersistence.ts',
-  { './terminalTabName': terminalTabNameMod },
+  { './terminalTabName': terminalTabNameMod, './pathPolicy': pathPolicyMod },
 );
 
 function makePane(tabId, paneId, ordinal = 1, accent = 'blue', cwd = '/tmp') {

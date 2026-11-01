@@ -53,7 +53,11 @@ pub struct TerminalSessionInfo {
     pub exit_code: Option<i32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub integration_nonce: Option<String>,
+    /// True only after the authenticated integration handshake was observed.
     pub shell_integration_available: bool,
+    /// Integration was set up for the shell and its handshake has not been observed yet.
+    #[serde(default)]
+    pub shell_integration_pending: bool,
 }
 
 /* ========================================================================== */
@@ -230,6 +234,7 @@ mod tests {
             exit_code: None,
             integration_nonce: None,
             shell_integration_available: true,
+            shell_integration_pending: false,
         };
 
         let json = serde_json::to_string(&info).unwrap();

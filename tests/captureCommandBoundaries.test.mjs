@@ -148,7 +148,7 @@ const nativeShellSource = fs.readFileSync(
   'utf8',
 );
 assert.match(nativeShellSource, /local full_cmd="\$1"/);
-assert.match(nativeShellSource, /full_cmd=\$\(fc -ln -1\)/);
+assert.match(nativeShellSource, /entry=\$\(HISTTIMEFORMAT= builtin history 1\)/);
 assert.match(nativeShellSource, /133;C;aid=%s;cmd=%s/);
 
 console.log('CAPTURE-COMMAND-001 trusted boundary tests passed.');

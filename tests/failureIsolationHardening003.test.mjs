@@ -721,6 +721,23 @@ console.log('\\n--- Test 14: Parser Throw Still Writes Raw Output ---');
   }, 'handleOutputBytes must not throw when shellParser fails');
 
   passAssert(runtime.terminal.writtenData.length > 0, 'Raw output bytes written to terminal despite parser error');
+  // CROSSPLAT-005: the raw bytes reach the terminal unchanged, and a parser failure does
+  // not freeze the runtime or touch process truth: later output still flows, and the
+  // backend's exit (with its own code) is still applied.
+  passAssert(
+    Buffer.from(runtime.terminal.writtenData[0]).equals(Buffer.from(rawBytes)),
+    'Raw bytes written byte-for-byte',
+  );
+  passAssert(runtime.status !== 'exited', 'Parser failure is not a process exit');
+  const writtenBeforeLater = runtime.terminal.writtenData.length;
+  mockApi.emitOutput(runtime.sessionId, [0x6f, 0x6b]);
+  passAssert(runtime.terminal.writtenData.length === writtenBeforeLater + 1, 'Later output still flows');
+  mockApi.emitExit(runtime.sessionId, 7);
+  passAssert(runtime.status === 'exited', 'Backend exit still applied after parser failure');
+  passAssert(
+    String(runtime.terminal.writtenData.at(-1)).includes('with code 7'),
+    'Exit code comes from the backend exit event',
+  );
 
   registry.disposeAll();
   console.log('✓ Shell integration parser failure gracefully falls back to raw terminal output');

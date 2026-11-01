@@ -531,6 +531,35 @@ console.log('--- Test 14: Cross-Repository Attribution Guard ---');
   console.log('✓ Cross-repository snapshot comparison strictly forbidden and guarded');
 }
 
+// ============================================================================
+// Test 15: WINDOWS-FOLDER-001 — a Windows folder selection binds unchanged
+// ============================================================================
+console.log('--- Test 15: Windows Drive-Letter Selection Creates and Binds Workspaces ---');
+{
+  const selectedPath = 'C:\\Users\\maike\\My Project\\données 你好';
+  wsContextMod.setCustomFolderPicker(async () => selectedPath);
+  const picked = await wsContextMod.openFolderPicker();
+  wsContextMod.setCustomFolderPicker(null);
+  assert.strictEqual(picked, selectedPath, 'Picker result must reach the frontend unchanged');
+
+  const folderName = wsContextMod.resolveWorkspaceFolderBasename(picked);
+  assert.strictEqual(folderName, 'données 你好');
+  assert.strictEqual(wsContextMod.resolveWorkspaceFolderBasename('C:\\Users\\maike\\Desktop\\'), 'Desktop');
+
+  // Add Workspace: a new workspace bound to the selection.
+  const created = createDefaultWsMod.createDefaultLogicalWorkspace(
+    'ws-windows', folderName, 'tab-1', 'pane-1', picked,
+  );
+  assert.strictEqual(created.rootPath, selectedPath);
+
+  // Open Folder: an existing unbound workspace bound to the selection.
+  const unbound = createDefaultWsMod.createDefaultLogicalWorkspace('ws-unbound-win', 'Workspace 1');
+  const bound = wsContextMod.bindWorkspaceRootPath(unbound, picked, undefined);
+  assert.strictEqual(bound.rootPath, selectedPath, 'Drive letter and backslashes are preserved');
+  assert.strictEqual(bound.projectCwd, selectedPath, 'The terminal cwd is the selected folder');
+  console.log('✓ Windows drive-letter path is preserved for Add Workspace and Open Folder');
+}
+
 console.log('\n=============================================================');
-console.log('ALL 14 WORKSPACE CONTEXT REGRESSION TESTS PASSED (14/14)!');
+console.log('ALL 15 WORKSPACE CONTEXT REGRESSION TESTS PASSED (15/15)!');
 console.log('=============================================================\n');

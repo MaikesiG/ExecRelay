@@ -103,20 +103,33 @@ pub fn validate_collector_command(input: &CollectorCommandInput) -> Result<()> {
     Ok(())
 }
 
+/// Windows `CREATE_NO_WINDOW`: the child (e.g. `git`) gets a console without a window, which its
+/// own children inherit. Without it, every collector run from the GUI app flashes a console window.
+#[cfg(windows)]
+const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
+/// Builds the collector subprocess: argv only, optional cwd, and no console window on Windows.
+fn collector_command(input: &CollectorCommandInput) -> Command {
+    let mut cmd = Command::new(&input.program);
+    cmd.args(&input.args);
+    if let Some(ref cwd) = input.cwd {
+        cmd.current_dir(cwd);
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+    cmd
+}
+
 /// Executes a validated read-only collector subprocess without shell interpolation.
 #[tauri::command]
 pub fn collector_run_command(input: CollectorCommandInput) -> Result<CollectorCommandOutput> {
     validate_collector_command(&input)?;
 
     let start = Instant::now();
-    let mut cmd = Command::new(&input.program);
-    cmd.args(&input.args);
-
-    if let Some(ref cwd) = input.cwd {
-        cmd.current_dir(cwd);
-    }
-
-    let output = cmd.output().map_err(|e| {
+    let output = collector_command(&input).output().map_err(|e| {
         TerminalError::CollectorExecutionFailed(format!("Failed to execute '{}': {e}", input.program))
     })?;
 
@@ -223,5 +236,39 @@ mod tests {
             }),
             Err(TerminalError::SecurityPolicyViolation(_))
         ));
+    }
+
+    #[test]
+    fn test_collector_command_keeps_argv_and_cwd() {
+        let dir = std::env::temp_dir();
+        let cmd = collector_command(&CollectorCommandInput {
+            program: "git".into(),
+            args: vec!["rev-parse".into(), "--show-toplevel".into()],
+            cwd: Some(dir.to_string_lossy().into_owned()),
+        });
+        assert_eq!(cmd.get_program(), "git");
+        let args: Vec<_> = cmd.get_args().collect();
+        assert_eq!(args, ["rev-parse", "--show-toplevel"]);
+        assert_eq!(cmd.get_current_dir(), Some(dir.as_path()));
+    }
+
+    /// Windows: a collector run starts its console child with CREATE_NO_WINDOW and still
+    /// captures output and the exit code.
+    #[cfg(windows)]
+    #[test]
+    fn test_windows_collector_runs_without_console_window() {
+        assert_eq!(CREATE_NO_WINDOW, 0x0800_0000);
+        let output = collector_run_command(CollectorCommandInput {
+            program: "git".into(),
+            args: vec!["version".into()],
+            cwd: None,
+        })
+        .expect("git runs");
+        assert_eq!(output.exit_code, 0);
+        assert!(
+            output.stdout.starts_with("git version"),
+            "{}",
+            output.stdout
+        );
     }
 }

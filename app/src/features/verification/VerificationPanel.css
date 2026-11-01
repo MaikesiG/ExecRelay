@@ -1250,3 +1250,10 @@
   box-sizing: border-box;
   align-self: flex-start;
 }
+
+/* VERIFY-ACTION-AVAILABILITY-001: why the run controls are disabled */
+.verification-target-inactive-hint {
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--text-muted, #8b949e);
+}

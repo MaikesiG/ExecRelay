@@ -7,7 +7,8 @@
  * OSC 133 protocol markers:
  * - OSC 133 ; A [; aid=<nonce>] ST/BEL: Prompt start
  * - OSC 133 ; B [; aid=<nonce>] ST/BEL: Prompt end / Command line ready
- * - OSC 133 ; C [; aid=<nonce>] ST/BEL: Command execution start
+ * - OSC 133 ; C [; aid=<nonce>] [; cmd=<b64>] [; cwd=<b64>] [; err=<code>] ST/BEL: Command execution start
+ *   (err= is set by the ExecRelay hook itself when it failed to produce part of the marker)
  * - OSC 133 ; D [; <exitCode>] [; aid=<nonce>] ST/BEL: Command execution finished with exit code
  * - OSC 133 ; P ; <k>=<v> ST/BEL: Property (e.g. Cwd, Prompt)
  *
@@ -38,6 +39,10 @@ export type ShellIntegrationEvent =
   | {
       type: 'command-start';
       command?: string;
+      /** Shell working directory at command start, as reported by the shell hook. */
+      cwd?: string;
+      /** Failure the ExecRelay shell hook reported about itself (e.g. 'command-encode'). */
+      hookError?: string;
       nonce?: string;
       trust: ShellIntegrationEventTrust;
     }
@@ -138,11 +143,15 @@ export function parseOsc133Payload(
       };
     case 'C': {
       const commandPart = parts.find((part) => part.startsWith('cmd='));
+      const cwdPart = parts.find((part) => part.startsWith('cwd='));
+      const errPart = parts.find((part) => part.startsWith('err='));
       return {
         type: 'command-start',
         command: commandPart
           ? decodeBase64Utf8(commandPart.slice(4))
           : undefined,
+        cwd: cwdPart ? decodeBase64Utf8(cwdPart.slice(4)) : undefined,
+        hookError: errPart ? errPart.slice(4) : undefined,
         nonce,
         trust: isTrusted,
       };
